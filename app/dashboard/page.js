@@ -9,6 +9,9 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState(0)
   const [toast, setToast] = useState(null)
+  const [dashboardView, setDashboardView] = useState('send')
+  const [sentEmails, setSentEmails] = useState([])
+  const [sentEmailsLoading, setSentEmailsLoading] = useState(false)
 
   useEffect(() => {
     if (!toast) return
@@ -68,6 +71,24 @@ export default function DashboardPage() {
     if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
   }, [companyNames.length, activeTab])
 
+  async function loadSentEmails() {
+    setSentEmailsLoading(true)
+    try {
+      const res = await fetch('/api/sent-emails', { credentials: 'include' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) setSentEmails(Array.isArray(data.sentEmails) ? data.sentEmails : [])
+      else setSentEmails([])
+    } catch (_) {
+      setSentEmails([])
+    } finally {
+      setSentEmailsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (dashboardView === 'sent') loadSentEmails()
+  }, [dashboardView])
+
   async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays) {
     if (selectedParticipants.length === 0) return
     setSending((s) => ({ ...s, [item.activityId]: true }))
@@ -76,6 +97,7 @@ export default function DashboardPage() {
     const ccList = cc ? cc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
     const bccList = bcc ? bcc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
     let ok = true
+    const messageIds = []
     for (const p of selectedParticipants) {
       const res = await fetch('/api/send-email', {
         method: 'POST',
@@ -83,7 +105,12 @@ export default function DashboardPage() {
         credentials: 'include',
         body: JSON.stringify({ to: p.email, subject, bodyHtml, cc: ccList, bcc: bccList }),
       })
-      if (!res.ok) ok = false
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.messageId) messageIds.push(data.messageId)
+      } else {
+        ok = false
+      }
     }
     if (ok) {
       const sentToEmails = selectedParticipants.map((p) => p.email)
@@ -97,6 +124,7 @@ export default function DashboardPage() {
           bodyHtml,
           sentTo: sentToEmails,
           followUpInDays: followUpInDays ?? 7,
+          messageIds: messageIds.length ? messageIds : undefined,
         }),
       })
       const data = res.ok ? await res.json().catch(() => ({})) : null
@@ -127,8 +155,36 @@ export default function DashboardPage() {
     )
   }
 
-  if (loading) return <div className="loading">Cargando actividades...</div>
-  if (error) return <div className="container"><div className="card"><p className="error">{error}</p></div></div>
+  if (loading) {
+    return (
+      <div className="dashboard-wrap">
+        <header className="dash-header">
+          <div className="dash-header-inner">
+            <div className="brand"><h1>Panel de correos</h1><span className="dash-header-sub">Vedisa Remates</span></div>
+          </div>
+        </header>
+        <main className="container main-content">
+          <div className="loading">Cargando actividades…</div>
+        </main>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="dashboard-wrap">
+        <header className="dash-header">
+          <div className="dash-header-inner">
+            <div className="brand"><h1>Panel de correos</h1><span className="dash-header-sub">Vedisa Remates</span></div>
+          </div>
+        </header>
+        <main className="container main-content">
+          <div className="card card-error">
+            <p className="error">{error}</p>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="dashboard-wrap">
@@ -139,8 +195,26 @@ export default function DashboardPage() {
       )}
       <header className="dash-header">
         <div className="dash-header-inner">
-          <h1>Panel de correos</h1>
-          <span className="dash-header-sub">Vedisa Remates</span>
+          <div className="brand">
+            <h1>Panel de correos</h1>
+            <span className="dash-header-sub">Vedisa Remates</span>
+          </div>
+          <nav className="dash-nav" aria-label="Secciones del panel">
+            <button
+              type="button"
+              className={`dash-nav-btn ${dashboardView === 'send' ? 'active' : ''}`}
+              onClick={() => setDashboardView('send')}
+            >
+              Enviar correos
+            </button>
+            <button
+              type="button"
+              className={`dash-nav-btn ${dashboardView === 'sent' ? 'active' : ''}`}
+              onClick={() => setDashboardView('sent')}
+            >
+              Correos enviados
+            </button>
+          </nav>
           <button
             type="button"
             className="btn-logout"
@@ -153,7 +227,16 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
-      <main className="container">
+      <main className="container main-content">
+        {dashboardView === 'sent' ? (
+          <SentEmailsView
+            list={sentEmails}
+            loading={sentEmailsLoading}
+            onRefresh={loadSentEmails}
+          />
+        ) : (
+          <>
+        <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
           Actividades pendientes por empresa. Cada destinatario seleccionado recibe un correo en su buzón. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva según el plazo elegido.
         </p>
@@ -201,10 +284,80 @@ export default function DashboardPage() {
           ))}
         </>
       )}
+          </>
+        )}
       </main>
       <footer className="dash-footer">
         <span>Vedisa Remates · Panel de seguimiento Pipedrive</span>
       </footer>
+    </div>
+  )
+}
+
+function SentEmailsView({ list, loading, onRefresh }) {
+  const formatDate = (iso) => {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  const statusLabel = (s) => (s === 'entregado' ? 'Entregado' : s === 'rebote' ? 'Rebote' : s === 'queja' ? 'Queja' : 'Enviado')
+  const statusClass = (s) => (s === 'entregado' ? 'status-ok' : s === 'rebote' || s === 'queja' ? 'status-error' : 'status-sent')
+
+  return (
+    <div className="sent-emails-view">
+      <div className="sent-emails-header">
+        <h2 className="page-title">Correos enviados</h2>
+        <p className="dash-intro" style={{ marginBottom: 0 }}>
+          Listado de correos enviados desde el panel. El estado <strong>Entregado</strong> se actualiza cuando AWS SES notifica la entrega (Configuration Set + SNS), como en TasacionesVedisa.
+        </p>
+        <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
+          {loading ? 'Actualizando…' : 'Actualizar lista'}
+        </button>
+      </div>
+      {loading && list.length === 0 ? (
+        <div className="loading">Cargando correos enviados…</div>
+      ) : list.length === 0 ? (
+        <div className="empty-state">Aún no hay correos enviados desde el panel.</div>
+      ) : (
+        <div className="sent-emails-table-wrap">
+          <table className="sent-emails-table" role="grid">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Empresa</th>
+                <th>Asunto</th>
+                <th>Destinatarios</th>
+                <th>Estado</th>
+                <th>MessageId (SES)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((row) => (
+                <tr key={`${row.activityId}-${row.sentAt}-${row.sentTo?.[0] || ''}`}>
+                  <td className="sent-emails-date">{formatDate(row.sentAt)}</td>
+                  <td className="sent-emails-org">{row.orgName || '—'}</td>
+                  <td className="sent-emails-subject">{row.subject || '—'}</td>
+                  <td className="sent-emails-to">
+                    {Array.isArray(row.sentTo) && row.sentTo.length
+                      ? row.sentTo.join(', ')
+                      : '—'}
+                  </td>
+                  <td>
+                    <span className={`status-badge ${statusClass(row.status)}`}>
+                      {statusLabel(row.status)}
+                    </span>
+                  </td>
+                  <td className="sent-emails-mid">
+                    {Array.isArray(row.messageIds) && row.messageIds.length
+                      ? row.messageIds[0] + (row.messageIds.length > 1 ? ` (+${row.messageIds.length - 1})` : '')
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -257,38 +410,40 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
       <h3>{item.orgName}</h3>
       <div className="card-content-grid">
         <div className="card-main">
-          <div className="form-group">
-            <label>Asunto del correo</label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setEditedSubject(item.activityId, e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <div className="body-email-header">
-              <label style={{ marginBottom: 0 }}>Cuerpo del correo (HTML)</label>
-              <div className="body-email-tabs">
-                <button
-                  type="button"
-                  className={viewBodyMode === 'code' ? 'active' : ''}
-                  onClick={() => setViewBodyMode('code')}
-                >
-                  Código HTML
-                </button>
-                <button
-                  type="button"
-                  className={viewBodyMode === 'preview' ? 'active' : ''}
-                  onClick={() => setViewBodyMode('preview')}
-                >
-                  Vista previa
-                </button>
-              </div>
+          <div className="subject-and-tabs-row">
+            <div className="form-group form-group-subject">
+              <label>Asunto del correo</label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setEditedSubject(item.activityId, e.target.value)}
+                className="input-full-width"
+              />
             </div>
+            <div className="body-email-tabs body-email-tabs-inline">
+              <button
+                type="button"
+                className={viewBodyMode === 'code' ? 'active' : ''}
+                onClick={() => setViewBodyMode('code')}
+              >
+                Código HTML
+              </button>
+              <button
+                type="button"
+                className={viewBodyMode === 'preview' ? 'active' : ''}
+                onClick={() => setViewBodyMode('preview')}
+              >
+                Vista previa
+              </button>
+            </div>
+          </div>
+          <div className="form-group form-group-body">
+            <label>Cuerpo del correo (HTML)</label>
             {viewBodyMode === 'code' ? (
               <textarea
                 value={bodyHtml}
                 onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
+                className="textarea-full-width"
               />
             ) : (
               <div className="body-email-preview-wrap">

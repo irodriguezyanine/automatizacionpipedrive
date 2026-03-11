@@ -79,6 +79,8 @@ El panel permite ver las actividades pendientes, **editar asunto y cuerpo** del 
    - Cada tarjeta muestra: empresa, asunto de la actividad, **asunto y cuerpo del correo** (editables).
    - **Checklist:** marcas a qué correos (participantes) quieres enviar (uno o todos).
    - Botón **Enviar** → se envían los correos y se completa la actividad en Pipedrive (+ nueva en 7 días).
+- **Menú del panel:** además de **Enviar correos**, hay una segunda vista **Correos enviados**, que lista todos los correos enviados desde el panel (origen: actividades completadas en Pipedrive con nota "Completada desde panel"). Se muestra fecha, empresa, asunto, destinatarios, estado (Enviado/Entregado) y MessageId de SES.
+- **Verificación de correo entregado** (como en TasacionesVedisa): el endpoint `POST /api/ses-event` está preparado para recibir notificaciones de AWS SNS cuando configures un **Configuration Set** en SES con un destino SNS (eventos Delivery, Bounce, Complaint). Suscribe la URL pública `https://tu-dominio.vercel.app/api/ses-event` al tópico SNS y envía los correos con ese Configuration Set (`SES_CONFIGURATION_SET` en .env). Opcionalmente puedes persistir el estado "entregado" por `messageId` (p. ej. con Vercel KV) y el listado de correos enviados mostrará **Entregado** cuando corresponda.
 
 ## Estructura del proyecto
 

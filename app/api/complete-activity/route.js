@@ -27,7 +27,7 @@ const DEFAULT_FOLLOW_UP_DAYS = 7
 export async function POST(req) {
   try {
     const body = await req.json()
-    const { activityId, subject, bodyHtml, sentTo, followUpInDays } = body
+    const { activityId, subject, bodyHtml, sentTo, followUpInDays, messageIds } = body
     if (!activityId) {
       return Response.json({ error: 'Falta activityId' }, { status: 400 })
     }
@@ -39,6 +39,9 @@ export async function POST(req) {
     const noteParts = ['Completada desde panel Vedisa. Correo enviado:\n']
     if (subject) noteParts.push(`Asunto: ${subject}\n`)
     if (Array.isArray(sentTo) && sentTo.length) noteParts.push(`Enviado a: ${sentTo.join(', ')}\n`)
+    if (Array.isArray(messageIds) && messageIds.length) {
+      noteParts.push(`MessageIds (SES): ${messageIds.join(', ')}\n`)
+    }
     if (bodyHtml) noteParts.push(`\n--- Cuerpo del correo ---\n${stripHtml(bodyHtml)}`)
     const note = noteParts.join('')
 

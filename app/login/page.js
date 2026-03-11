@@ -26,10 +26,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="container">
-      <div className="card login-form">
+    <div className="login-wrap">
+      <div className="login-form">
         <h1>Panel Vedisa Remates</h1>
-        <p style={{ color: '#666', marginBottom: '1rem' }}>Ingresa la contraseña de administración.</p>
+        <p className="login-subtitle">Ingresa la contraseña de administración para continuar.</p>
         <form onSubmit={handleSubmit}>
           <input
             type="password"
@@ -37,9 +37,10 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoFocus
+            aria-label="Contraseña"
           />
           {error && <p className="error">{error}</p>}
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+          <button type="submit" className="btn btn-primary">
             Entrar
           </button>
         </form>
