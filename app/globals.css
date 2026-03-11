@@ -38,7 +38,7 @@ input, textarea, button, select {
   font: inherit;
 }
 
-/* Layout */
+/* Layout: uso completo del ancho en PC */
 .dashboard-wrap {
   min-height: 100vh;
   display: flex;
@@ -46,10 +46,17 @@ input, textarea, button, select {
 }
 
 .container {
-  max-width: 720px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: 2rem 2rem 3rem;
   width: 100%;
+}
+
+@media (min-width: 900px) {
+  .container {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
 }
 
 /* Header */
@@ -61,13 +68,14 @@ input, textarea, button, select {
 }
 
 .dash-header-inner {
-  max-width: 720px;
+  max-width: 1280px;
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 1rem;
+  padding: 0 0.5rem;
 }
 
 .dash-header h1 {
@@ -164,7 +172,7 @@ input, textarea, button, select {
 
 .company-dropdown {
   width: 100%;
-  max-width: 380px;
+  max-width: 420px;
   padding: 0.75rem 2.5rem 0.75rem 1rem;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -205,15 +213,34 @@ input, textarea, button, select {
   to { opacity: 1; }
 }
 
-/* Cards */
+/* Cards: diseño mejorado y uso horizontal en desktop */
 .card {
   background: var(--vedisa-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   padding: 1.75rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
   border: 1px solid #e5e7eb;
   transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+@media (min-width: 960px) {
+  .card {
+    padding: 2rem 2.25rem;
+  }
+  .card-content-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 2.5rem;
+    align-items: start;
+  }
+  .card-content-grid .card-main {
+    min-width: 0;
+  }
+  .card-content-grid .card-side {
+    position: sticky;
+    top: 1rem;
+  }
 }
 
 .card:hover {
@@ -222,15 +249,15 @@ input, textarea, button, select {
 
 .card.card-overdue {
   border-left: 4px solid #ef4444;
-  background: var(--vedisa-overdue);
+  background: linear-gradient(to right, var(--vedisa-overdue) 0%, var(--vedisa-card) 8px);
 }
 
 .card h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.3rem;
+  margin: 0 0 1.25rem 0;
+  font-size: 1.35rem;
   font-weight: 600;
   color: #111827;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .activity-meta {
@@ -284,6 +311,12 @@ input, textarea, button, select {
   font-size: 0.95rem;
   transition: border-color 0.2s, box-shadow 0.2s;
   background: #fff;
+}
+
+.card-side .form-group input,
+.card-side .form-group select,
+.card-side .follow-up-select {
+  max-width: 100%;
 }
 
 .form-group input:focus,
@@ -475,6 +508,24 @@ input, textarea, button, select {
   padding: 4rem 2rem;
   color: var(--vedisa-gris-oscuro);
   font-size: 1rem;
+  font-weight: 500;
+}
+
+.loading::after {
+  content: '';
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  margin-left: 0.5rem;
+  vertical-align: -0.2em;
+  border: 2px solid var(--vedisa-azul-muted);
+  border-top-color: var(--vedisa-azul);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .login-form {
@@ -492,17 +543,18 @@ input, textarea, button, select {
 
 .empty-state {
   text-align: center;
-  padding: 2.5rem;
+  padding: 3rem 2.5rem;
   color: var(--vedisa-gris-oscuro);
   background: var(--vedisa-card);
   border-radius: var(--radius-lg);
   border: 2px dashed #e2e8f0;
   font-size: 0.95rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .dash-footer {
   margin-top: auto;
-  padding: 1rem 1.5rem;
+  padding: 1rem 2rem;
   text-align: center;
   font-size: 0.8rem;
   color: var(--vedisa-gris);

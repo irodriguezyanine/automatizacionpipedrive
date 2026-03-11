@@ -46,20 +46,25 @@ export async function POST(req) {
 
     const days = Math.max(1, Math.min(365, Number(followUpInDays) || DEFAULT_FOLLOW_UP_DAYS))
     const dueDate = addDays(new Date(), days)
+    const ownerId = activity.owner_id ?? activity.assignee_id ?? activity.assignee?.id ?? activity.assignee?.value
+    const dealId = activity.deal_id ?? activity.deal?.id ?? activity.deal?.value
+    const personId = activity.person_id ?? activity.person?.id ?? activity.person?.value
+    const orgId = activity.org_id ?? activity.org?.id ?? activity.org?.value
     await createActivity({
       subject: `Seguimiento (automático): ${activity.subject || 'Seguimiento'}`,
       type: activity.type || 'task',
-      owner_id: activity.owner_id,
+      owner_id: ownerId,
       due_date: dueDate,
-      deal_id: activity.deal_id,
-      person_id: activity.person_id,
-      org_id: activity.org_id,
+      deal_id: dealId,
+      person_id: personId,
+      org_id: orgId,
       note: `Creado por panel desde actividad #${activityId}. Próximo seguimiento ${dueDate}.`,
     })
 
     return Response.json({ success: true, dueDate, followUpInDays: days })
   } catch (err) {
-    console.error(err)
-    return Response.json({ error: err.message }, { status: 500 })
+    console.error('complete-activity error:', err)
+    const message = err?.message || 'Error al completar actividad'
+    return Response.json({ error: message, details: err?.cause?.message }, { status: 500 })
   }
 }

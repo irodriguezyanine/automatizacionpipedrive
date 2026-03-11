@@ -106,7 +106,9 @@ export default function DashboardPage() {
         setActivities((prev) => prev.filter((a) => a.activityId !== item.activityId))
         setToast({ type: 'success', message: `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.` })
       } else {
-        setToast({ type: 'error', message: 'No se pudo completar la actividad en Pipedrive.' })
+        const errData = await res.json().catch(() => ({}))
+        const errMsg = errData?.error || 'No se pudo completar la actividad en Pipedrive.'
+        setToast({ type: 'error', message: errMsg })
       }
     } else {
       setToast({ type: 'error', message: 'Error al enviar algún correo.' })
@@ -153,7 +155,7 @@ export default function DashboardPage() {
       </header>
       <main className="container">
         <p className="dash-intro">
-          Actividades pendientes por empresa. Al enviar, la actividad se marca <strong>Completada</strong> con el correo enviado y se crea una nueva para dentro de 7 días.
+          Actividades pendientes por empresa. Cada destinatario seleccionado recibe un correo en su buzón. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva según el plazo elegido.
         </p>
 
       {activities.length === 0 ? (
@@ -253,154 +255,160 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
         {item.dueDate && <span>Vence: {item.dueDate}</span>}
       </div>
       <h3>{item.orgName}</h3>
-      <div className="form-group">
-        <label>Asunto del correo</label>
-        <input
-          type="text"
-          value={subject}
-          onChange={(e) => setEditedSubject(item.activityId, e.target.value)}
-        />
-      </div>
-      <div className="form-group">
-        <div className="body-email-header">
-          <label style={{ marginBottom: 0 }}>Cuerpo del correo (HTML)</label>
-          <div className="body-email-tabs">
-            <button
-              type="button"
-              className={viewBodyMode === 'code' ? 'active' : ''}
-              onClick={() => setViewBodyMode('code')}
-            >
-              Código HTML
-            </button>
-            <button
-              type="button"
-              className={viewBodyMode === 'preview' ? 'active' : ''}
-              onClick={() => setViewBodyMode('preview')}
-            >
-              Vista previa
-            </button>
-          </div>
-        </div>
-        {viewBodyMode === 'code' ? (
-          <textarea
-            value={bodyHtml}
-            onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
-          />
-        ) : (
-          <div className="body-email-preview-wrap">
-            <div className="body-email-toolbar" role="toolbar" aria-label="Formato del texto">
-              <button type="button" title="Negrita" onClick={() => execFormat('bold')} aria-pressed={document.queryCommandState?.('bold')}>
-                <strong>N</strong>
-              </button>
-              <button type="button" title="Cursiva" onClick={() => execFormat('italic')}>
-                <em>K</em>
-              </button>
-              <button type="button" title="Subrayado" onClick={() => execFormat('underline')}>
-                <u>S</u>
-              </button>
-              <span className="toolbar-sep" />
-              <select
-                title="Tamaño de fuente"
-                onChange={(e) => { execFormat('fontSize', e.target.value); e.target.value = '' }}
-              >
-                <option value="">Tamaño</option>
-                <option value="1">Muy pequeño</option>
-                <option value="2">Pequeño</option>
-                <option value="3">Normal</option>
-                <option value="4">Mediano</option>
-                <option value="5">Grande</option>
-                <option value="6">Muy grande</option>
-                <option value="7">Máximo</option>
-              </select>
-              <select
-                title="Fuente"
-                onChange={(e) => { if (e.target.value) execFormat('fontName', e.target.value); e.target.value = '' }}
-              >
-                <option value="">Fuente</option>
-                <option value="Arial">Arial</option>
-                <option value="Helvetica">Helvetica</option>
-                <option value="Georgia">Georgia</option>
-                <option value="Times New Roman">Times New Roman</option>
-                <option value="Verdana">Verdana</option>
-              </select>
-              <span className="toolbar-sep" />
-              <button type="button" title="Lista con viñetas" onClick={() => execFormat('insertUnorderedList')}>
-                • Lista
-              </button>
-              <button type="button" title="Lista numerada" onClick={() => execFormat('insertOrderedList')}>
-                1. Lista
-              </button>
-            </div>
-            <div
-              ref={previewRef}
-              className="body-email-preview body-email-editable"
-              contentEditable
-              suppressContentEditableWarning
-              onInput={syncPreviewToState}
-              onBlur={syncPreviewToState}
+      <div className="card-content-grid">
+        <div className="card-main">
+          <div className="form-group">
+            <label>Asunto del correo</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setEditedSubject(item.activityId, e.target.value)}
             />
           </div>
-        )}
-      </div>
-      <div className="form-group">
-        <label>Enviar a (solo contactos de esta empresa – elegir uno o más)</label>
-        {item.participants.length === 0 ? (
-          <p className="hint">No hay contactos con email en esta empresa en Pipedrive.</p>
-        ) : (
-          <div className="checkbox-group">
-            {item.participants.map((p) => (
-              <label key={p.email}>
-                <input
-                  type="checkbox"
-                  checked={!!selected[p.email]}
-                  onChange={(e) => setSelected((s) => ({ ...s, [p.email]: e.target.checked }))}
+          <div className="form-group">
+            <div className="body-email-header">
+              <label style={{ marginBottom: 0 }}>Cuerpo del correo (HTML)</label>
+              <div className="body-email-tabs">
+                <button
+                  type="button"
+                  className={viewBodyMode === 'code' ? 'active' : ''}
+                  onClick={() => setViewBodyMode('code')}
+                >
+                  Código HTML
+                </button>
+                <button
+                  type="button"
+                  className={viewBodyMode === 'preview' ? 'active' : ''}
+                  onClick={() => setViewBodyMode('preview')}
+                >
+                  Vista previa
+                </button>
+              </div>
+            </div>
+            {viewBodyMode === 'code' ? (
+              <textarea
+                value={bodyHtml}
+                onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
+              />
+            ) : (
+              <div className="body-email-preview-wrap">
+                <div className="body-email-toolbar" role="toolbar" aria-label="Formato del texto">
+                  <button type="button" title="Negrita" onClick={() => execFormat('bold')} aria-pressed={document.queryCommandState?.('bold')}>
+                    <strong>N</strong>
+                  </button>
+                  <button type="button" title="Cursiva" onClick={() => execFormat('italic')}>
+                    <em>K</em>
+                  </button>
+                  <button type="button" title="Subrayado" onClick={() => execFormat('underline')}>
+                    <u>S</u>
+                  </button>
+                  <span className="toolbar-sep" />
+                  <select
+                    title="Tamaño de fuente"
+                    onChange={(e) => { execFormat('fontSize', e.target.value); e.target.value = '' }}
+                  >
+                    <option value="">Tamaño</option>
+                    <option value="1">Muy pequeño</option>
+                    <option value="2">Pequeño</option>
+                    <option value="3">Normal</option>
+                    <option value="4">Mediano</option>
+                    <option value="5">Grande</option>
+                    <option value="6">Muy grande</option>
+                    <option value="7">Máximo</option>
+                  </select>
+                  <select
+                    title="Fuente"
+                    onChange={(e) => { if (e.target.value) execFormat('fontName', e.target.value); e.target.value = '' }}
+                  >
+                    <option value="">Fuente</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Verdana">Verdana</option>
+                  </select>
+                  <span className="toolbar-sep" />
+                  <button type="button" title="Lista con viñetas" onClick={() => execFormat('insertUnorderedList')}>
+                    • Lista
+                  </button>
+                  <button type="button" title="Lista numerada" onClick={() => execFormat('insertOrderedList')}>
+                    1. Lista
+                  </button>
+                </div>
+                <div
+                  ref={previewRef}
+                  className="body-email-preview body-email-editable"
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={syncPreviewToState}
+                  onBlur={syncPreviewToState}
                 />
-                {p.name} &lt;{p.email}&gt;
-              </label>
-            ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        <div className="card-side">
+          <div className="form-group">
+            <label>Enviar a (un correo por separado a cada uno)</label>
+            {item.participants.length === 0 ? (
+              <p className="hint">No hay contactos con email en esta empresa en Pipedrive.</p>
+            ) : (
+              <div className="checkbox-group">
+                {item.participants.map((p) => (
+                  <label key={p.email}>
+                    <input
+                      type="checkbox"
+                      checked={!!selected[p.email]}
+                      onChange={(e) => setSelected((s) => ({ ...s, [p.email]: e.target.checked }))}
+                    />
+                    {p.name} &lt;{p.email}&gt;
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="form-group">
+            <label>CC (opcional)</label>
+            <input
+              type="text"
+              placeholder="ej: otro@empresa.com, otro2@empresa.com"
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+            />
+            <p className="hint">Correos separados por coma, espacio o punto y coma.</p>
+          </div>
+          <div className="form-group">
+            <label>CCO / BCC (opcional)</label>
+            <input
+              type="text"
+              placeholder="ej: copia@vedisaremates.cl"
+              value={bcc}
+              onChange={(e) => setBcc(e.target.value)}
+            />
+            <p className="hint">Copia oculta. Mismos destinatarios en cada envío.</p>
+          </div>
+          <div className="form-group">
+            <label htmlFor={`follow-up-${item.activityId}`}>Programar siguiente seguimiento en</label>
+            <select
+              id={`follow-up-${item.activityId}`}
+              value={followUpInDays}
+              onChange={(e) => setFollowUpInDays(Number(e.target.value))}
+              className="follow-up-select"
+            >
+              {FOLLOW_UP_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn btn-primary"
+            disabled={selectedParticipants.length === 0 || sending}
+            onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays)}
+          >
+            {sending ? 'Enviando…' : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
+          </button>
+        </div>
       </div>
-      <div className="form-group">
-        <label>CC (opcional)</label>
-        <input
-          type="text"
-          placeholder="ej: otro@empresa.com, otro2@empresa.com"
-          value={cc}
-          onChange={(e) => setCc(e.target.value)}
-        />
-        <p className="hint">Correos separados por coma, espacio o punto y coma.</p>
-      </div>
-      <div className="form-group">
-        <label>CCO / BCC (opcional)</label>
-        <input
-          type="text"
-          placeholder="ej: copia@vedisaremates.cl"
-          value={bcc}
-          onChange={(e) => setBcc(e.target.value)}
-        />
-        <p className="hint">Copia oculta. Mismos destinatarios en cada envío de esta actividad.</p>
-      </div>
-      <div className="form-group">
-        <label htmlFor={`follow-up-${item.activityId}`}>Programar siguiente seguimiento en</label>
-        <select
-          id={`follow-up-${item.activityId}`}
-          value={followUpInDays}
-          onChange={(e) => setFollowUpInDays(Number(e.target.value))}
-          className="follow-up-select"
-        >
-          {FOLLOW_UP_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </div>
-      <button
-        className="btn btn-primary"
-        disabled={selectedParticipants.length === 0 || sending}
-        onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays)}
-      >
-        {sending ? 'Enviando…' : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
-      </button>
     </div>
   )
 }
