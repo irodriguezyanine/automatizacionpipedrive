@@ -10,14 +10,40 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('/api/activities', { credentials: 'include' })
-      .then((r) => r.json())
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 25000)
+
+    fetch('/api/activities', { credentials: 'include', signal: controller.signal })
+      .then((r) => {
+        clearTimeout(timeout)
+        if (!r.ok) {
+          return r.json()
+          .then((data) => { throw new Error(data?.error || `Error ${r.status}`) })
+          .catch((e) => {
+            if (e instanceof Error && e.message && !e.message.startsWith('Error ')) throw e
+            if (e instanceof SyntaxError) throw new Error(`Error ${r.status}. Revisa variables de entorno en Vercel.`)
+            throw e
+          })
+        }
+        return r.json()
+      })
       .then((data) => {
         if (data.error) throw new Error(data.error)
         setActivities(Array.isArray(data) ? data : [])
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        if (e.name === 'AbortError') {
+          setError('La carga tardó demasiado. Puede que falten variables de entorno en Vercel o que Pipedrive esté lento.')
+        } else {
+          setError(e.message || 'Error al cargar actividades')
+        }
+      })
       .finally(() => setLoading(false))
+
+    return () => {
+      clearTimeout(timeout)
+      controller.abort()
+    }
   }, [])
 
   async function handleSend(item, selectedParticipants) {

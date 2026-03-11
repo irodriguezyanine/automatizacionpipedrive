@@ -2,10 +2,17 @@ import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, g
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function GET() {
+  if (!process.env.PIPEDRIVE_API_TOKEN) {
+    return Response.json(
+      { error: 'Falta PIPEDRIVE_API_TOKEN en las variables de entorno de Vercel.' },
+      { status: 503 }
+    )
+  }
   try {
-    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 200 })
+    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 50 })
     const overdueIds = new Set(overdue.map((a) => a.id))
     const results = []
 
