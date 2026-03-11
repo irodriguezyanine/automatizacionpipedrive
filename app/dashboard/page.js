@@ -173,8 +173,8 @@ export default function DashboardPage() {
     setSending((s) => ({ ...s, [item.activityId]: true }))
     const subject = item.editedSubject ?? item.proposedSubject
     const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
-    const ccList = cc ? cc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
-    const bccList = bcc ? bcc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
+    const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? String(cc).split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : [])
+    const bccList = Array.isArray(bcc) ? bcc.filter(Boolean) : (bcc ? String(bcc).split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : [])
     let ok = true
     const messageIds = []
     const sendErrors = []
@@ -493,12 +493,70 @@ function NewTemplateForm({ onSave, onCancel }) {
   )
 }
 
+const DEFAULT_CC = ['irodriguez@vedisaremates.cl', 'jdiaz@vedisaremates.cl']
+const DEFAULT_BCC = ['jpmontero@vedisaremates.cl']
+
+function isValidEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s).trim())
+}
+
+function EmailTagInput({ value, onChange, placeholder }) {
+  const [input, setInput] = useState('')
+  const list = Array.isArray(value) ? value : []
+
+  function addEmail(email) {
+    const e = String(email).trim().toLowerCase()
+    if (!e || !isValidEmail(e)) return
+    if (list.includes(e)) return
+    onChange([...list, e])
+    setInput('')
+  }
+
+  function removeEmail(index) {
+    onChange(list.filter((_, i) => i !== index))
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+      e.preventDefault()
+      addEmail(input)
+    }
+    if (e.key === 'Backspace' && !input && list.length) {
+      removeEmail(list.length - 1)
+    }
+  }
+
+  function handleBlur() {
+    if (input.trim()) addEmail(input)
+  }
+
+  return (
+    <div className="email-tags-wrap">
+      {list.map((email, i) => (
+        <span key={`${email}-${i}`} className="email-tag">
+          {email}
+          <button type="button" className="email-tag-remove" onClick={() => removeEmail(i)} aria-label={`Quitar ${email}`}>×</button>
+        </span>
+      ))}
+      <input
+        type="text"
+        className="email-tags-input"
+        placeholder={placeholder}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+      />
+    </div>
+  )
+}
+
 const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml, onRequestNewTemplate }) {
   const [selected, setSelected] = useState({})
-  const [cc, setCc] = useState('')
-  const [bcc, setBcc] = useState('')
+  const [cc, setCc] = useState(DEFAULT_CC)
+  const [bcc, setBcc] = useState(DEFAULT_BCC)
   const [followUpInDays, setFollowUpInDays] = useState(7)
-  const [viewBodyMode, setViewBodyMode] = useState('code')
+  const [viewBodyMode, setViewBodyMode] = useState('preview')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
@@ -681,23 +739,13 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
           </div>
           <div className="form-group">
             <label>CC (opcional)</label>
-            <input
-              type="text"
-              placeholder="ej: otro@empresa.com, otro2@empresa.com"
-              value={cc}
-              onChange={(e) => setCc(e.target.value)}
-            />
-            <p className="hint">Correos separados por coma, espacio o punto y coma.</p>
+            <EmailTagInput value={cc} onChange={setCc} placeholder="Agregar correo CC…" />
+            <p className="hint">Cada correo como etiqueta. Puedes quitar o agregar. Por defecto: irodriguez y jdiaz.</p>
           </div>
           <div className="form-group">
             <label>CCO / BCC (opcional)</label>
-            <input
-              type="text"
-              placeholder="ej: copia@vedisaremates.cl"
-              value={bcc}
-              onChange={(e) => setBcc(e.target.value)}
-            />
-            <p className="hint">Copia oculta. Mismos destinatarios en cada envío.</p>
+            <EmailTagInput value={bcc} onChange={setBcc} placeholder="Agregar correo en copia oculta…" />
+            <p className="hint">Copia oculta. Mismos destinatarios en cada envío. Por defecto: jpmontero.</p>
           </div>
           <div className="form-group">
             <label htmlFor={`follow-up-${item.activityId}`}>Programar siguiente seguimiento en</label>
