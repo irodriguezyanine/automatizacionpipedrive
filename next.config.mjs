@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Evita fallos en "Collecting build traces" en Vercel
+  output: 'standalone',
   experimental: {
     serverComponentsExternalPackages: ['@aws-sdk/client-ses'],
   },
