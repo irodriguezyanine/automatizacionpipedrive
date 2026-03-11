@@ -38,7 +38,7 @@ export async function GET() {
     )
   }
   try {
-    const activities = await getCompletedActivitiesForPanel({ limit: 50 })
+    const activities = await getCompletedActivitiesForPanel({ limit: 30 })
     const orgCache = new Map()
     const results = []
     for (const a of activities) {

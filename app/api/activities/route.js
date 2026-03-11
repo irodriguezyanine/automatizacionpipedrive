@@ -14,13 +14,15 @@ export async function GET(request) {
   try {
     const ownerIdParam = request.nextUrl?.searchParams?.get('owner_id')
     const ownerId = ownerIdParam ? Number(ownerIdParam) : undefined
-    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 40, ownerId })
+    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 28, ownerId })
     const overdueIds = new Set(overdue.map((a) => a.id))
     const todayStr = new Date().toISOString().slice(0, 10)
     const results = []
 
     const orgCache = new Map()
     const personCache = new Map()
+    const orgPersonsCache = new Map()
+    const dealParticipantsCache = new Map()
 
     async function getOrgCached(orgId) {
       if (orgId == null) return null
@@ -48,6 +50,34 @@ export async function GET(request) {
       }
     }
 
+    async function getPersonsByOrgCached(orgId) {
+      if (orgId == null) return []
+      const id = Number(orgId)
+      if (orgPersonsCache.has(id)) return orgPersonsCache.get(id)
+      try {
+        const list = await getPersonsByOrg(orgId)
+        orgPersonsCache.set(id, list)
+        return list
+      } catch (_) {
+        orgPersonsCache.set(id, [])
+        return []
+      }
+    }
+
+    async function getDealParticipantsCached(dealId) {
+      if (dealId == null) return []
+      const id = Number(dealId)
+      if (dealParticipantsCache.has(id)) return dealParticipantsCache.get(id)
+      try {
+        const list = await getDealParticipants(dealId)
+        dealParticipantsCache.set(id, list)
+        return list
+      } catch (_) {
+        dealParticipantsCache.set(id, [])
+        return []
+      }
+    }
+
     for (const activity of all) {
       const orgId = activity.org_id
       const personId = activity.person_id
@@ -63,19 +93,15 @@ export async function GET(request) {
       const personIds = new Set()
 
       if (orgId) {
-        try {
-          const orgPersons = await getPersonsByOrg(orgId)
-          for (const person of orgPersons) personIds.add(person.id)
-        } catch (_) {}
+        const orgPersons = await getPersonsByOrgCached(orgId)
+        for (const person of orgPersons) personIds.add(person.id)
       }
       if (activity.deal_id) {
-        try {
-          const dealParts = await getDealParticipants(activity.deal_id)
-          for (const p of dealParts) {
-            const pid = p.person_id ?? p.person?.value ?? p.id
-            if (pid != null) personIds.add(Number(pid))
-          }
-        } catch (_) {}
+        const dealParts = await getDealParticipantsCached(activity.deal_id)
+        for (const p of dealParts) {
+          const pid = p.person_id ?? p.person?.value ?? p.id
+          if (pid != null) personIds.add(Number(pid))
+        }
       }
       if (personId) personIds.add(personId)
 

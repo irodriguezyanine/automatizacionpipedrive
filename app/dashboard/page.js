@@ -121,16 +121,6 @@ export default function DashboardPage() {
     }
   }, [selectedOwnerId])
 
-  const refetchActivities = useCallback(() => {
-    const url = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
-    fetch(url, { credentials: 'include' })
-      .then((r) => r.ok ? r.json() : [])
-      .then((data) => {
-        if (Array.isArray(data)) setActivities(data)
-      })
-      .catch(() => {})
-  }, [selectedOwnerId])
-
   useEffect(() => {
     if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
   }, [companyNames.length, activeTab])
@@ -153,14 +143,21 @@ export default function DashboardPage() {
     if (dashboardView === 'sent') loadSentEmails()
   }, [dashboardView])
 
-  useEffect(() => {
-    loadSentEmails()
-  }, [])
-
   async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays) {
     if (selectedParticipants.length === 0) return
+    let emailsForWarn = sentEmails
+    if (emailsForWarn.length === 0) {
+      try {
+        const res = await fetch('/api/sent-emails', { credentials: 'include' })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && Array.isArray(data?.sentEmails)) {
+          emailsForWarn = data.sentEmails
+          setSentEmails(emailsForWarn)
+        }
+      } catch (_) {}
+    }
     const alreadySentEmails = new Set(
-      sentEmails.flatMap((r) => (Array.isArray(r.sentTo) ? r.sentTo : []).map((e) => String(e).toLowerCase().trim()))
+      emailsForWarn.flatMap((r) => (Array.isArray(r.sentTo) ? r.sentTo : []).map((e) => String(e).toLowerCase().trim()))
     )
     const toWarn = selectedParticipants.filter((p) => p.email && alreadySentEmails.has(String(p.email).toLowerCase().trim()))
     if (toWarn.length > 0) {
@@ -218,7 +215,6 @@ export default function DashboardPage() {
       if (res.ok) {
         setActivities((prev) => prev.filter((a) => a.activityId !== item.activityId))
         setToast({ type: 'success', message: `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.` })
-        refetchActivities()
       } else {
         const errData = await res.json().catch(() => ({}))
         const errMsg = errData?.error || 'No se pudo completar la actividad en Pipedrive.'

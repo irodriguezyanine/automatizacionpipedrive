@@ -8,30 +8,49 @@
 
 ---
 
+## Procesos que más consumen tokens (ordenados de mayor a menor)
+
+| Proceso | Cuándo ocurre | Llamadas aproximadas (sin cache) | Qué se hace |
+|--------|----------------|-----------------------------------|-------------|
+| **Cargar lista de actividades** | Abrir el panel o cambiar filtro “Participante” | 1 lista (28) + cache por org, personas/org, deal/participantes, persona | Listar actividades pendientes (máx. 28), luego por cada actividad: organización, personas de la org, participantes del deal, y cada contacto (todo con cache por request). **Es el que más consume.** |
+| **Cargar “Correos enviados”** | Entrar en la pestaña Correos enviados | 1 lista + hasta 6 actividades por ID + 1 por organización distinta | Listar actividades completadas (30), rellenar nota con getActivityById cuando hace falta (máx. 6), y nombre de empresa (cache). |
+| **Cargar lista de participantes** | Abrir el panel (una vez por sesión) | 1 | GET de usuarios (propietarios) para el desplegable. |
+| **Completar actividad + seguimiento** | Enviar correo y pulsar “completar actividad” | 3 | getActivityById, markActivityDone (PATCH), createActivity (POST). |
+
+**Conclusión:** El pico de consumo viene de **cargar la lista de actividades** (y al cambiar de participante, que vuelve a cargar esa lista). Por eso tenemos cache de organización, **personas por org**, **participantes por deal** y persona, y un límite de 28 actividades por carga.
+
+---
+
 ## Optimizaciones aplicadas en este proyecto
 
 1. **Cache por request en `/api/activities`**  
-   - `getOrganization(orgId)` y `getPerson(personId)` se cachean en un `Map` dentro del mismo GET.  
-   - Evita llamadas repetidas para la misma organización o persona al procesar varias actividades.
+   - `getOrganization(orgId)`, `getPerson(personId)`, **`getPersonsByOrg(orgId)`** y **`getDealParticipants(dealId)`** se cachean en un `Map` dentro del mismo GET.  
+   - Si 10 actividades son de la misma empresa, solo se llama 1 vez a personas de esa org y 1 vez por deal distinto; sin cache serían 10+ llamadas.
 
 2. **Menos llamadas en “Correos enviados”**  
-   - **getCompletedActivitiesForPanel**: se limita a 50 actividades y a **máximo 12** llamadas `getActivityById` por request (solo cuando la lista no trae la nota completa).  
-   - **sent-emails**: cache de `getOrganization` por `org_id` en la misma request, para no repetir la misma organización.
+   - **getCompletedActivitiesForPanel**: se limita a **30** actividades y a **máximo 6** llamadas `getActivityById` por request (solo cuando la lista no trae la nota completa).  
+   - **sent-emails**: cache de `getOrganization` por `org_id` en la misma request.
 
 3. **Límite de actividades pendientes**  
-   - En `/api/activities` se usan como máximo **40** actividades pendientes por carga (`maxItems: 40`), reduciendo el número de organizaciones, personas y deals consultados.
+   - En `/api/activities` se usan como máximo **28** actividades pendientes por carga (`maxItems: 28`), reduciendo organizaciones, personas y deals consultados.
 
 4. **Carga en paralelo en el dashboard**  
    - Actividades y plantillas se piden en paralelo (`Promise.all`) para no sumar esperas innecesarias (el ahorro de tokens viene de los puntos anteriores).
+
+5. **Sin recarga tras completar actividad**  
+   - Tras enviar el correo y completar la actividad, la lista se actualiza quitando esa actividad del estado; **no** se vuelve a llamar a la API de actividades. Así se ahorra una carga completa (la más costosa) por cada envío.
+
+6. **“Correos enviados” bajo demanda**  
+   - La lista de correos enviados solo se pide cuando el usuario abre la pestaña **Correos enviados** (o la primera vez que pulsa Enviar, para la advertencia de reenvío). No se carga al abrir el panel, ahorrando 1 request pesado por cada carga del dashboard.
 
 ---
 
 ## Cómo reducir aún más el uso
 
-- **Menos actividades por carga**: bajar `maxItems` en `getAllActivitiesNotDone` (por ejemplo a 25) si no necesitas ver tantas a la vez.  
-- **Menos “correos enviados”**: en `getCompletedActivitiesForPanel` ya se usa `limit: 50` y como máximo 12 `getActivityById`; puedes bajar `limit` o `maxFetchById` si priorizas ahorro.  
-- **Refrescar solo cuando haga falta**: el panel ya vuelve a cargar actividades solo al completar una; evitar refrescar manualmente o abrir muchas pestañas del panel reduce peticiones.  
-- **Revisar otras integraciones**: el presupuesto es compartido; revisa en Ajustes de la empresa qué otras apps o integraciones consumen tokens.
+- **Menos actividades por carga**: en `app/api/activities/route.js` se usa `maxItems: 28`; puedes bajarlo a 20 si necesitas ahorrar más.  
+- **Menos “correos enviados”**: en `getCompletedActivitiesForPanel` (lib/pipedrive.js) están `limit: 30` y `maxFetchById: 6`; puedes reducirlos si priorizas tokens.  
+- **Evitar refrescar o muchas pestañas**: cada recarga del panel o cambio de participante vuelve a cargar actividades; usar una sola pestaña y no refrescar innecesariamente reduce peticiones.  
+- **Revisar otras integraciones**: el presupuesto es compartido; en Ajustes de la empresa de Pipedrive revisa qué otras apps consumen tokens.
 
 Documentación de Pipedrive: [Guía para optimizar el uso de la API](https://pipedrive.readme.io/docs/guide-for-optimizing-api-usage).
 
