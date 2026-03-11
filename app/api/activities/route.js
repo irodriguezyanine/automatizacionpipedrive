@@ -1,4 +1,4 @@
-import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getPrimaryEmail } from '../../../lib/pipedrive.js'
+import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getDealParticipants, getPrimaryEmail } from '../../../lib/pipedrive.js'
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
@@ -30,28 +30,35 @@ export async function GET() {
         } catch (_) {}
       }
 
-      // Solo participantes de esta empresa (org): no mezclar con otras organizaciones
+      const personIds = new Set()
+
       if (orgId) {
         try {
           const orgPersons = await getPersonsByOrg(orgId)
-          const seen = new Set()
-          for (const person of orgPersons) {
-            const email = getPrimaryEmail(person)
-            if (!email || seen.has(email)) continue
-            seen.add(email)
-            const name = person?.name || email
-            if (person.id === personId) primaryName = name
-            participants.push({ personId: person.id, name, email })
+          for (const person of orgPersons) personIds.add(person.id)
+        } catch (_) {}
+      }
+      if (activity.deal_id) {
+        try {
+          const dealParts = await getDealParticipants(activity.deal_id)
+          for (const p of dealParts) {
+            const pid = p.person_id ?? p.person?.value ?? p.id
+            if (pid != null) personIds.add(Number(pid))
           }
         } catch (_) {}
-      } else if (personId) {
+      }
+      if (personId) personIds.add(personId)
+
+      const seen = new Set()
+      for (const pid of personIds) {
         try {
-          const person = await getPerson(personId)
+          const person = await getPerson(pid)
           const email = getPrimaryEmail(person)
-          if (email) {
-            primaryName = person?.name || email
-            participants.push({ personId: personId, name: primaryName, email })
-          }
+          if (!email || seen.has(email)) continue
+          seen.add(email)
+          const name = person?.name || email
+          if (pid === personId) primaryName = name
+          participants.push({ personId: pid, name, email })
         } catch (_) {}
       }
 

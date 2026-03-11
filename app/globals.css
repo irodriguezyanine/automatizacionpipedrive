@@ -273,8 +273,11 @@ input, textarea, button, select {
 }
 
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select,
+.follow-up-select {
   width: 100%;
+  max-width: 320px;
   padding: 0.7rem 0.9rem;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -284,7 +287,9 @@ input, textarea, button, select {
 }
 
 .form-group input:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+.form-group select:focus,
+.follow-up-select:focus {
   outline: none;
   border-color: var(--vedisa-azul);
   box-shadow: 0 0 0 3px var(--vedisa-azul-muted);
@@ -331,15 +336,67 @@ input, textarea, button, select {
   border-color: var(--vedisa-azul);
 }
 
-.body-email-preview {
-  min-height: 140px;
-  padding: 1.1rem;
+.body-email-preview-wrap {
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #fafafa;
+  overflow: hidden;
+}
+
+.body-email-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.body-email-toolbar button,
+.body-email-toolbar select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #475569;
+}
+
+.body-email-toolbar button:hover,
+.body-email-toolbar select:hover {
+  background: #f8fafc;
+  border-color: var(--vedisa-azul);
+  color: var(--vedisa-azul);
+}
+
+.body-email-toolbar select {
+  cursor: pointer;
+  min-width: 0;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 1.2rem;
+  background: #cbd5e1;
+  margin: 0 0.25rem;
+}
+
+.body-email-preview {
+  min-height: 140px;
+  padding: 1.1rem;
   font-size: 0.95rem;
   line-height: 1.65;
   color: #1f2937;
+}
+
+.body-email-editable {
+  outline: none;
+}
+
+.body-email-editable:focus {
+  box-shadow: inset 0 0 0 2px var(--vedisa-azul);
 }
 
 .body-email-preview p {

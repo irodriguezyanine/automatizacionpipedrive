@@ -22,10 +22,12 @@ function stripHtml(html) {
     .trim()
 }
 
+const DEFAULT_FOLLOW_UP_DAYS = 7
+
 export async function POST(req) {
   try {
     const body = await req.json()
-    const { activityId, subject, bodyHtml, sentTo } = body
+    const { activityId, subject, bodyHtml, sentTo, followUpInDays } = body
     if (!activityId) {
       return Response.json({ error: 'Falta activityId' }, { status: 400 })
     }
@@ -42,19 +44,20 @@ export async function POST(req) {
 
     await markActivityDone(activityId, note)
 
-    const dueIn7 = addDays(new Date(), 7)
+    const days = Math.max(1, Math.min(365, Number(followUpInDays) || DEFAULT_FOLLOW_UP_DAYS))
+    const dueDate = addDays(new Date(), days)
     await createActivity({
       subject: `Seguimiento (automático): ${activity.subject || 'Seguimiento'}`,
       type: activity.type || 'task',
       owner_id: activity.owner_id,
-      due_date: dueIn7,
+      due_date: dueDate,
       deal_id: activity.deal_id,
       person_id: activity.person_id,
       org_id: activity.org_id,
-      note: `Creado por panel desde actividad #${activityId}. Próximo seguimiento ${dueIn7}.`,
+      note: `Creado por panel desde actividad #${activityId}. Próximo seguimiento ${dueDate}.`,
     })
 
-    return Response.json({ success: true, dueDate: dueIn7 })
+    return Response.json({ success: true, dueDate, followUpInDays: days })
   } catch (err) {
     console.error(err)
     return Response.json({ error: err.message }, { status: 500 })

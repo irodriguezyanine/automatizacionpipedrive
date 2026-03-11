@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 
 export default function DashboardPage() {
   const [activities, setActivities] = useState([])
@@ -68,7 +68,7 @@ export default function DashboardPage() {
     if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
   }, [companyNames.length, activeTab])
 
-  async function handleSend(item, selectedParticipants, cc, bcc) {
+  async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays) {
     if (selectedParticipants.length === 0) return
     setSending((s) => ({ ...s, [item.activityId]: true }))
     const subject = item.editedSubject ?? item.proposedSubject
@@ -96,11 +96,15 @@ export default function DashboardPage() {
           subject,
           bodyHtml,
           sentTo: sentToEmails,
+          followUpInDays: followUpInDays ?? 7,
         }),
       })
+      const data = res.ok ? await res.json().catch(() => ({})) : null
+      const days = data?.followUpInDays ?? followUpInDays ?? 7
+      const periodText = days === 7 ? '7 días' : days === 14 ? '2 semanas' : days === 21 ? '3 semanas' : days === 30 ? '1 mes' : days === 60 ? '2 meses' : `${days} días`
       if (res.ok) {
         setActivities((prev) => prev.filter((a) => a.activityId !== item.activityId))
-        setToast({ type: 'success', message: 'Correo(s) enviado(s). Actividad completada y nueva programada en 7 días.' })
+        setToast({ type: 'success', message: `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.` })
       } else {
         setToast({ type: 'error', message: 'No se pudo completar la actividad en Pipedrive.' })
       }
@@ -203,14 +207,41 @@ export default function DashboardPage() {
   )
 }
 
+const FOLLOW_UP_OPTIONS = [
+  { value: 7, label: '1 semana' },
+  { value: 14, label: '2 semanas' },
+  { value: 21, label: '3 semanas' },
+  { value: 30, label: '1 mes' },
+  { value: 60, label: '2 meses' },
+  { value: 90, label: '3 meses' },
+]
+
 function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml }) {
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState('')
   const [bcc, setBcc] = useState('')
+  const [followUpInDays, setFollowUpInDays] = useState(7)
   const [viewBodyMode, setViewBodyMode] = useState('code')
+  const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
   const selectedParticipants = item.participants.filter((p) => selected[p.email])
+
+  useEffect(() => {
+    if (viewBodyMode === 'preview' && previewRef.current) {
+      previewRef.current.innerHTML = bodyHtml || '<p><em>Sin contenido</em></p>'
+    }
+  }, [viewBodyMode])
+
+  function syncPreviewToState() {
+    if (previewRef.current) setEditedBodyHtml(item.activityId, previewRef.current.innerHTML)
+  }
+
+  function execFormat(cmd, value) {
+    document.execCommand(cmd, false, value ?? null)
+    previewRef.current?.focus()
+    syncPreviewToState()
+  }
 
   return (
     <div className={`card ${item.isOverdue ? 'card-overdue' : ''}`}>
@@ -256,10 +287,59 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
             onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
           />
         ) : (
-          <div
-            className="body-email-preview"
-            dangerouslySetInnerHTML={{ __html: bodyHtml || '<p><em>Sin contenido</em></p>' }}
-          />
+          <div className="body-email-preview-wrap">
+            <div className="body-email-toolbar" role="toolbar" aria-label="Formato del texto">
+              <button type="button" title="Negrita" onClick={() => execFormat('bold')} aria-pressed={document.queryCommandState?.('bold')}>
+                <strong>N</strong>
+              </button>
+              <button type="button" title="Cursiva" onClick={() => execFormat('italic')}>
+                <em>K</em>
+              </button>
+              <button type="button" title="Subrayado" onClick={() => execFormat('underline')}>
+                <u>S</u>
+              </button>
+              <span className="toolbar-sep" />
+              <select
+                title="Tamaño de fuente"
+                onChange={(e) => { execFormat('fontSize', e.target.value); e.target.value = '' }}
+              >
+                <option value="">Tamaño</option>
+                <option value="1">Muy pequeño</option>
+                <option value="2">Pequeño</option>
+                <option value="3">Normal</option>
+                <option value="4">Mediano</option>
+                <option value="5">Grande</option>
+                <option value="6">Muy grande</option>
+                <option value="7">Máximo</option>
+              </select>
+              <select
+                title="Fuente"
+                onChange={(e) => { if (e.target.value) execFormat('fontName', e.target.value); e.target.value = '' }}
+              >
+                <option value="">Fuente</option>
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Verdana">Verdana</option>
+              </select>
+              <span className="toolbar-sep" />
+              <button type="button" title="Lista con viñetas" onClick={() => execFormat('insertUnorderedList')}>
+                • Lista
+              </button>
+              <button type="button" title="Lista numerada" onClick={() => execFormat('insertOrderedList')}>
+                1. Lista
+              </button>
+            </div>
+            <div
+              ref={previewRef}
+              className="body-email-preview body-email-editable"
+              contentEditable
+              suppressContentEditableWarning
+              onInput={syncPreviewToState}
+              onBlur={syncPreviewToState}
+            />
+          </div>
         )}
       </div>
       <div className="form-group">
@@ -301,10 +381,23 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
         />
         <p className="hint">Copia oculta. Mismos destinatarios en cada envío de esta actividad.</p>
       </div>
+      <div className="form-group">
+        <label htmlFor={`follow-up-${item.activityId}`}>Programar siguiente seguimiento en</label>
+        <select
+          id={`follow-up-${item.activityId}`}
+          value={followUpInDays}
+          onChange={(e) => setFollowUpInDays(Number(e.target.value))}
+          className="follow-up-select"
+        >
+          {FOLLOW_UP_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
       <button
         className="btn btn-primary"
         disabled={selectedParticipants.length === 0 || sending}
-        onClick={() => onSend(item, selectedParticipants, cc, bcc)}
+        onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays)}
       >
         {sending ? 'Enviando…' : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
       </button>
