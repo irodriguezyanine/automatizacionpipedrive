@@ -18,6 +18,8 @@ export default function DashboardPage() {
   const [signatureHtml, setSignatureHtml] = useState('')
   const [customTemplates, setCustomTemplates] = useState([])
   const [showNewTemplate, setShowNewTemplate] = useState(false)
+  const [owners, setOwners] = useState([])
+  const [selectedOwnerId, setSelectedOwnerId] = useState('')
 
   const allTemplates = useMemo(() => [...templates, ...customTemplates], [templates, customTemplates])
 
@@ -61,11 +63,20 @@ export default function DashboardPage() {
   }, [activities])
 
   useEffect(() => {
+    fetch('/api/owners', { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : { owners: [] })
+      .then((data) => setOwners(Array.isArray(data?.owners) ? data.owners : []))
+      .catch(() => setOwners([]))
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 25000)
+    const activitiesUrl = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
 
     Promise.all([
-      fetch('/api/activities', { credentials: 'include', signal: controller.signal }),
+      fetch(activitiesUrl, { credentials: 'include', signal: controller.signal }),
       fetch('/api/templates', { credentials: 'include' }),
     ])
       .then(([activitiesRes, templatesRes]) => {
@@ -108,7 +119,17 @@ export default function DashboardPage() {
       clearTimeout(timeout)
       controller.abort()
     }
-  }, [])
+  }, [selectedOwnerId])
+
+  const refetchActivities = useCallback(() => {
+    const url = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
+    fetch(url, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => {
+        if (Array.isArray(data)) setActivities(data)
+      })
+      .catch(() => {})
+  }, [selectedOwnerId])
 
   useEffect(() => {
     if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
@@ -132,8 +153,23 @@ export default function DashboardPage() {
     if (dashboardView === 'sent') loadSentEmails()
   }, [dashboardView])
 
+  useEffect(() => {
+    loadSentEmails()
+  }, [])
+
   async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays) {
     if (selectedParticipants.length === 0) return
+    const alreadySentEmails = new Set(
+      sentEmails.flatMap((r) => (Array.isArray(r.sentTo) ? r.sentTo : []).map((e) => String(e).toLowerCase().trim()))
+    )
+    const toWarn = selectedParticipants.filter((p) => p.email && alreadySentEmails.has(String(p.email).toLowerCase().trim()))
+    if (toWarn.length > 0) {
+      const names = toWarn.map((x) => x.name || x.email).join(', ')
+      const msg = toWarn.length === 1
+        ? `Ya se le envió un correo a esta persona (${names}). ¿Desea volver a enviárselo?`
+        : `Ya se les envió correo a: ${names}. ¿Desea volver a enviar?`
+      if (!window.confirm(msg)) return
+    }
     setSending((s) => ({ ...s, [item.activityId]: true }))
     const subject = item.editedSubject ?? item.proposedSubject
     const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
@@ -141,18 +177,24 @@ export default function DashboardPage() {
     const bccList = bcc ? bcc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
     let ok = true
     const messageIds = []
+    const sendErrors = []
     for (const p of selectedParticipants) {
+      const nombre = getFirstName(p.name)
+      const bodyForRecipient = personalizeGreeting(bodyHtml, nombre)
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ to: p.email, subject, bodyHtml, cc: ccList, bcc: bccList }),
+        body: JSON.stringify({ to: p.email, subject, bodyHtml: bodyForRecipient, cc: ccList, bcc: bccList }),
       })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         if (data.messageId) messageIds.push(data.messageId)
       } else {
         ok = false
+        const errData = await res.json().catch(() => ({}))
+        const errMsg = errData?.error || `Error ${res.status}`
+        sendErrors.push(`${p.name || p.email}: ${errMsg}`)
       }
     }
     if (ok) {
@@ -176,13 +218,15 @@ export default function DashboardPage() {
       if (res.ok) {
         setActivities((prev) => prev.filter((a) => a.activityId !== item.activityId))
         setToast({ type: 'success', message: `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.` })
+        refetchActivities()
       } else {
         const errData = await res.json().catch(() => ({}))
         const errMsg = errData?.error || 'No se pudo completar la actividad en Pipedrive.'
         setToast({ type: 'error', message: errMsg })
       }
     } else {
-      setToast({ type: 'error', message: 'Error al enviar algún correo.' })
+      const detail = sendErrors.length > 0 ? sendErrors[0] : 'Revisa la consola o variables de entorno (SES).'
+      setToast({ type: 'error', message: `Error al enviar algún correo. ${detail}` })
     }
     setSending((s) => ({ ...s, [item.activityId]: false }))
   }
@@ -295,10 +339,23 @@ export default function DashboardPage() {
         </button>
       )}
 
-      {activities.length === 0 ? (
-        <div className="empty-state">No hay actividades pendientes.</div>
-      ) : (
-        <>
+      <div className="filters-row">
+        <div className="company-dropdown-wrap">
+          <label htmlFor="participant-select" className="company-dropdown-label">Participante</label>
+          <select
+            id="participant-select"
+            className="company-dropdown"
+            value={selectedOwnerId}
+            onChange={(e) => setSelectedOwnerId(e.target.value)}
+            aria-label="Filtrar por participante (propietario)"
+          >
+            <option value="">Todos los participantes</option>
+            {owners.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        </div>
+        {activities.length > 0 && (
           <div className="company-dropdown-wrap">
             <label htmlFor="company-select" className="company-dropdown-label">Empresa / negocio</label>
             <select
@@ -316,6 +373,12 @@ export default function DashboardPage() {
               ))}
             </select>
           </div>
+        )}
+      </div>
+      {activities.length === 0 ? (
+        <div className="empty-state">No hay actividades pendientes.</div>
+      ) : (
+        <>
           {companyNames.map((name, i) => (
             <div
               key={name}
@@ -378,6 +441,15 @@ function getFirstName(fullName) {
   if (!fullName || typeof fullName !== 'string') return 'Estimado/a'
   const first = String(fullName).trim().split(/\s+/)[0]
   return first || 'Estimado/a'
+}
+
+/** Reemplaza el saludo en el cuerpo del correo por el nombre del destinatario (para envíos a varias personas). */
+function personalizeGreeting(bodyHtml, recipientFirstName) {
+  if (!bodyHtml || typeof bodyHtml !== 'string') return bodyHtml || ''
+  const name = recipientFirstName || 'Estimado/a'
+  let out = bodyHtml.replace(/\{\{nombre\}\}/g, name)
+  out = out.replace(/(Estimad[oa]\s+)[^,]+,\s*/i, `$1${name}, `)
+  return out
 }
 
 function fillPlaceholders(body, nombre, empresa) {
@@ -468,10 +540,10 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   }
 
   return (
-    <div className={`card ${item.isOverdue ? 'card-overdue' : ''}`}>
+    <div className={`card ${item.isOverdue ? 'card-overdue' : item.isDueToday ? 'card-due-today' : ''}`}>
       <div className="activity-meta">
-        <span className={item.isOverdue ? 'badge overdue' : 'badge'}>
-          {item.isOverdue ? 'Atrasada' : 'Pendiente'}
+        <span className={item.isOverdue ? 'badge overdue' : item.isDueToday ? 'badge due-today' : 'badge'}>
+          {item.isOverdue ? 'Atrasada' : item.isDueToday ? 'Vence hoy' : 'Pendiente'}
         </span>
         <span>Actividad: {item.subject}</span>
         {item.dueDate && <span>Vence: {item.dueDate}</span>}

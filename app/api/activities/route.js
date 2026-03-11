@@ -4,7 +4,7 @@ import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function GET() {
+export async function GET(request) {
   if (!process.env.PIPEDRIVE_API_TOKEN) {
     return Response.json(
       { error: 'Falta PIPEDRIVE_API_TOKEN en las variables de entorno de Vercel.' },
@@ -12,8 +12,11 @@ export async function GET() {
     )
   }
   try {
-    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 50 })
+    const ownerIdParam = request.nextUrl?.searchParams?.get('owner_id')
+    const ownerId = ownerIdParam ? Number(ownerIdParam) : undefined
+    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 50, ownerId })
     const overdueIds = new Set(overdue.map((a) => a.id))
+    const todayStr = new Date().toISOString().slice(0, 10)
     const results = []
 
     const orgCache = new Map()
@@ -94,12 +97,16 @@ export async function GET() {
         orgName,
       })
 
+      const dueDate = activity.due_date || null
+      const isOverdue = overdueIds.has(activity.id)
+      const isDueToday = dueDate && dueDate.slice(0, 10) === todayStr && !isOverdue
       results.push({
         activityId: activity.id,
         subject: activity.subject || 'Sin asunto',
         type: activity.type,
-        dueDate: activity.due_date || null,
-        isOverdue: overdueIds.has(activity.id),
+        dueDate,
+        isOverdue,
+        isDueToday: !!isDueToday,
         orgName,
         primaryName,
         proposedSubject,

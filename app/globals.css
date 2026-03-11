@@ -232,6 +232,17 @@ input, textarea, button, select {
 }
 
 /* Desplegable */
+.filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.filters-row .company-dropdown-wrap {
+  margin-bottom: 0;
+}
+
 .company-dropdown-wrap {
   margin-bottom: 1.5rem;
 }
@@ -407,6 +418,11 @@ input, textarea, button, select {
   background: linear-gradient(to right, var(--vedisa-overdue) 0%, var(--vedisa-card) 8px);
 }
 
+.card.card-due-today {
+  border-left: 4px solid var(--vedisa-dorado);
+  background: linear-gradient(to right, rgba(234, 179, 8, 0.12) 0%, var(--vedisa-card) 8px);
+}
+
 .card h3 {
   margin: 0 0 1rem 0;
   font-size: 1.125rem;
@@ -440,6 +456,11 @@ input, textarea, button, select {
 .badge.overdue {
   background: #fef2f2;
   color: var(--error);
+}
+
+.badge.due-today {
+  background: #fefce8;
+  color: #a16207;
 }
 
 .form-group {
