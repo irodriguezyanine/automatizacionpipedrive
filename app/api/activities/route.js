@@ -14,7 +14,7 @@ export async function GET(request) {
   try {
     const ownerIdParam = request.nextUrl?.searchParams?.get('owner_id')
     const ownerId = ownerIdParam ? Number(ownerIdParam) : undefined
-    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 50, ownerId })
+    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 40, ownerId })
     const overdueIds = new Set(overdue.map((a) => a.id))
     const todayStr = new Date().toISOString().slice(0, 10)
     const results = []

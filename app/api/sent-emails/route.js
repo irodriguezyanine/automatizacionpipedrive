@@ -38,7 +38,8 @@ export async function GET() {
     )
   }
   try {
-    const activities = await getCompletedActivitiesForPanel({ limit: 100 })
+    const activities = await getCompletedActivitiesForPanel({ limit: 50 })
+    const orgCache = new Map()
     const results = []
     for (const a of activities) {
       const parsed = parseNote(a.note)
@@ -47,10 +48,16 @@ export async function GET() {
       let orgName = null
       const orgId = a.org_id ?? a.org?.id ?? a.org?.value
       if (orgId) {
-        try {
-          const org = await getOrganization(orgId)
-          orgName = org?.name || null
-        } catch (_) {}
+        const id = Number(orgId)
+        if (!orgCache.has(id)) {
+          try {
+            const org = await getOrganization(orgId)
+            orgCache.set(id, org?.name ?? null)
+          } catch (_) {
+            orgCache.set(id, null)
+          }
+        }
+        orgName = orgCache.get(id)
       }
       results.push({
         activityId: a.id,
