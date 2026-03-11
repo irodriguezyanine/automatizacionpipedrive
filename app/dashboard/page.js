@@ -394,6 +394,7 @@ export default function DashboardPage() {
                   allTemplates={allTemplates}
                   signatureHtml={signatureHtml}
                   onRequestNewTemplate={() => setShowNewTemplate(true)}
+                  onSaveCustomTemplate={saveCustomTemplate}
                 />
               ))}
             </div>
@@ -547,13 +548,17 @@ function EmailTagInput({ value, onChange, placeholder }) {
   )
 }
 
-const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml, onRequestNewTemplate }) {
+const MINIMAL_NEW_TEMPLATE_BODY = '<p>Hola {{nombre}},</p>\n\n'
+
+const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml, onRequestNewTemplate, onSaveCustomTemplate }) {
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState(DEFAULT_CC)
   const [bcc, setBcc] = useState(DEFAULT_BCC)
   const [followUpInDays, setFollowUpInDays] = useState(7)
   const [viewBodyMode, setViewBodyMode] = useState('preview')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [isCreatingNewTemplate, setIsCreatingNewTemplate] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
   const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
@@ -565,16 +570,31 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
 
   function applyTemplate(templateId) {
     if (templateId === '__new__') {
-      onRequestNewTemplate?.()
       setSelectedTemplateId('')
+      const minimalBody = MINIMAL_NEW_TEMPLATE_BODY + (signatureHtml || '')
+      setEditedBodyHtml(item.activityId, minimalBody)
+      setViewBodyMode('preview')
+      setIsCreatingNewTemplate(true)
+      setNewTemplateName('')
       return
     }
+    setIsCreatingNewTemplate(false)
     setSelectedTemplateId(templateId)
     const t = allTemplates.find((x) => x.id === templateId)
     if (!t || !signatureHtml) return
     const filled = fillPlaceholders(t.body, nombre, empresa)
     const fullBody = filled + '\n' + signatureHtml
     setEditedBodyHtml(item.activityId, fullBody)
+  }
+
+  function handleSaveNewTemplate() {
+    const name = newTemplateName.trim()
+    if (!name) return
+    const body = bodyHtml || ''
+    onSaveCustomTemplate?.(name, body)
+    setIsCreatingNewTemplate(false)
+    setNewTemplateName('')
+    setSelectedTemplateId('')
   }
 
   useEffect(() => {
@@ -647,6 +667,24 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
                 <option value="__new__">＋ Crear nueva plantilla</option>
               </select>
             <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Puedes editarlo después o crear una nueva.</p>
+            {isCreatingNewTemplate && (
+              <div className="new-template-inline">
+                <label htmlFor={`new-template-name-${item.activityId}`}>Nombre de la plantilla</label>
+                <div className="new-template-inline-row">
+                  <input
+                    id={`new-template-name-${item.activityId}`}
+                    type="text"
+                    value={newTemplateName}
+                    onChange={(e) => setNewTemplateName(e.target.value)}
+                    placeholder="Ej: Primera toma de contacto"
+                    className="new-template-name-input"
+                  />
+                  <button type="button" className="btn btn-primary" onClick={handleSaveNewTemplate} disabled={!newTemplateName.trim()}>
+                    Guardar en la lista
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="form-group form-group-body">
             <label>Cuerpo del correo (HTML)</label>

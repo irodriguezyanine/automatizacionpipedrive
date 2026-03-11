@@ -409,6 +409,39 @@ input, textarea, button, select {
   width: 100%;
 }
 
+.new-template-inline {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--neutral-50);
+  border-radius: var(--radius);
+  border: 1px solid var(--neutral-200);
+}
+.new-template-inline label {
+  display: block;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  color: var(--neutral-600);
+  margin-bottom: 0.5rem;
+}
+.new-template-inline-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.new-template-name-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+}
+.new-template-name-input:focus {
+  outline: none;
+  border-color: var(--vedisa-azul);
+}
+
 .btn-new-template {
   margin-bottom: 1.25rem;
 }
