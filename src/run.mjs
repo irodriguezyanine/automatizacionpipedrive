@@ -14,17 +14,16 @@ import 'dotenv/config'
 import {
   getAllActivitiesNotDone,
   getActivityTypes,
-  getActivitiesHistory,
   getPerson,
   getDeal,
   getOrganization,
   getPrimaryEmail,
   markActivityDone,
   createActivity,
-} from './lib/pipedrive.js'
+} from '../lib/pipedrive.js'
 import { classifyActivity } from './lib/classify.js'
-import { sendEmail } from './lib/ses.js'
-import { buildFollowUpEmail } from './lib/email-templates.js'
+import { sendEmail } from '../lib/ses.js'
+import { buildFollowUpEmail } from '../lib/email-templates.js'
 
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true'
 

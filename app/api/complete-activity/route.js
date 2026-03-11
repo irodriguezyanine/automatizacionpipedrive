@@ -1,4 +1,4 @@
-import { markActivityDone, createActivity, getActivityById } from '../../../src/lib/pipedrive.js'
+import { markActivityDone, createActivity, getActivityById } from '../../../lib/pipedrive.js'
 
 export const dynamic = 'force-dynamic'
 

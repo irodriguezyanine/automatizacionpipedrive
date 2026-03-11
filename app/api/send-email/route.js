@@ -1,4 +1,4 @@
-import { sendEmail } from '../../../src/lib/ses.js'
+import { sendEmail } from '../../../lib/ses.js'
 
 export const dynamic = 'force-dynamic'
 

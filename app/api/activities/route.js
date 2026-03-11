@@ -1,5 +1,5 @@
-import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getPrimaryEmail } from '../../../src/lib/pipedrive.js'
-import { buildFollowUpEmail } from '../../../src/lib/email-templates.js'
+import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getPrimaryEmail } from '../../../lib/pipedrive.js'
+import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
 
