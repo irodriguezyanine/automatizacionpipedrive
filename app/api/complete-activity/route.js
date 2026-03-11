@@ -12,13 +12,14 @@ function stripHtml(html) {
   if (!html || typeof html !== 'string') return ''
   return html
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
@@ -36,14 +37,16 @@ export async function POST(req) {
       return Response.json({ error: 'Actividad no encontrada' }, { status: 404 })
     }
 
-    const noteParts = ['Completada desde panel Vedisa. Correo enviado:\n']
-    if (subject) noteParts.push(`Asunto: ${subject}\n`)
-    if (Array.isArray(sentTo) && sentTo.length) noteParts.push(`Enviado a: ${sentTo.join(', ')}\n`)
-    if (Array.isArray(messageIds) && messageIds.length) {
-      noteParts.push(`MessageIds (SES): ${messageIds.join(', ')}\n`)
+    const noteParts = []
+    noteParts.push('Completada desde panel Vedisa. Correo enviado.\n\n')
+    if (subject) noteParts.push(`Asunto: ${subject}\n\n`)
+    if (Array.isArray(sentTo) && sentTo.length) noteParts.push(`Enviado a: ${sentTo.join(', ')}\n\n`)
+    if (bodyHtml) {
+      const bodyText = stripHtml(bodyHtml)
+      noteParts.push('--- Cuerpo del correo ---\n\n')
+      noteParts.push(bodyText)
     }
-    if (bodyHtml) noteParts.push(`\n--- Cuerpo del correo ---\n${stripHtml(bodyHtml)}`)
-    const note = noteParts.join('')
+    const note = noteParts.join('').trim()
 
     await markActivityDone(activityId, note)
 
@@ -53,6 +56,12 @@ export async function POST(req) {
     const dealId = activity.deal_id ?? activity.deal?.id ?? activity.deal?.value
     const personId = activity.person_id ?? activity.person?.id ?? activity.person?.value
     const orgId = activity.org_id ?? activity.org?.id ?? activity.org?.value
+    const followUpNote = [
+      'Actividad creada automáticamente por el panel Vedisa.',
+      `Origen: actividad #${activityId}`,
+      `Próximo seguimiento: ${dueDate}`,
+    ].join('\n')
+
     await createActivity({
       subject: `Seguimiento (automático): ${activity.subject || 'Seguimiento'}`,
       type: activity.type || 'task',
@@ -61,7 +70,7 @@ export async function POST(req) {
       deal_id: dealId,
       person_id: personId,
       org_id: orgId,
-      note: `Creado por panel desde actividad #${activityId}. Próximo seguimiento ${dueDate}.`,
+      note: followUpNote,
     })
 
     return Response.json({ success: true, dueDate, followUpInDays: days })

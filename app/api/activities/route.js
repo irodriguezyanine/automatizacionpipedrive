@@ -76,6 +76,7 @@ export async function GET() {
         dueDate: activity.due_date || null,
         isOverdue: overdueIds.has(activity.id),
         orgName,
+        primaryName,
         proposedSubject,
         proposedBodyHtml,
         participants: dedup,

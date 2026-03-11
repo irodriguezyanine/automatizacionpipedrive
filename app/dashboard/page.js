@@ -12,6 +12,44 @@ export default function DashboardPage() {
   const [dashboardView, setDashboardView] = useState('send')
   const [sentEmails, setSentEmails] = useState([])
   const [sentEmailsLoading, setSentEmailsLoading] = useState(false)
+  const [templates, setTemplates] = useState([])
+  const [signatureHtml, setSignatureHtml] = useState('')
+  const [customTemplates, setCustomTemplates] = useState([])
+  const [showNewTemplate, setShowNewTemplate] = useState(false)
+
+  const allTemplates = useMemo(() => [...templates, ...customTemplates], [templates, customTemplates])
+
+  useEffect(() => {
+    fetch('/api/templates', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.templates) setTemplates(data.templates)
+        if (data.signatureHtml) setSignatureHtml(data.signatureHtml)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('vedisa_custom_templates')
+      if (raw) {
+        const list = JSON.parse(raw)
+        if (Array.isArray(list)) setCustomTemplates(list)
+      }
+    } catch (_) {}
+  }, [])
+
+  function saveCustomTemplate(name, body) {
+    if (!name || !body) return
+    const id = `custom-${Date.now()}`
+    const newT = { id, name: name.trim(), body: body.trim() }
+    const next = [...customTemplates, newT]
+    setCustomTemplates(next)
+    try {
+      localStorage.setItem('vedisa_custom_templates', JSON.stringify(next))
+    } catch (_) {}
+    setShowNewTemplate(false)
+  }
 
   useEffect(() => {
     if (!toast) return
@@ -238,8 +276,17 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          Actividades pendientes por empresa. Cada destinatario seleccionado recibe un correo en su buzón. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva según el plazo elegido.
+          Actividades pendientes por empresa. Elige una plantilla o crea una nueva. Cada destinatario recibe un correo en su buzón. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva según el plazo elegido.
         </p>
+
+      {showNewTemplate && (
+        <NewTemplateForm onSave={saveCustomTemplate} onCancel={() => setShowNewTemplate(false)} />
+      )}
+      {!showNewTemplate && (
+        <button type="button" className="btn btn-secondary btn-new-template" onClick={() => setShowNewTemplate(true)}>
+          + Crear nueva plantilla
+        </button>
+      )}
 
       {activities.length === 0 ? (
         <div className="empty-state">No hay actividades pendientes.</div>
@@ -278,6 +325,8 @@ export default function DashboardPage() {
                   sending={sending[item.activityId]}
                   setEditedSubject={setEditedSubject}
                   setEditedBodyHtml={setEditedBodyHtml}
+                  allTemplates={allTemplates}
+                  signatureHtml={signatureHtml}
                 />
               ))}
             </div>
@@ -371,16 +420,81 @@ const FOLLOW_UP_OPTIONS = [
   { value: 90, label: '3 meses' },
 ]
 
-function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml }) {
+function getSaludo() {
+  return new Date().getHours() < 12 ? 'Buenos días' : 'Buenas tardes'
+}
+
+function getFirstName(fullName) {
+  if (!fullName || typeof fullName !== 'string') return 'Estimado/a'
+  const first = String(fullName).trim().split(/\s+/)[0]
+  return first || 'Estimado/a'
+}
+
+function fillPlaceholders(body, nombre, empresa) {
+  const saludo = getSaludo()
+  return body
+    .replace(/\{\{nombre\}\}/g, nombre)
+    .replace(/\{\{empresa\}\}/g, empresa)
+    .replace(/\{\{saludo\}\}/g, saludo)
+}
+
+function NewTemplateForm({ onSave, onCancel }) {
+  const [name, setName] = useState('')
+  const [body, setBody] = useState('')
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    onSave(name, body)
+    setName('')
+    setBody('')
+  }
+
+  return (
+    <div className="card new-template-form">
+      <h3 className="new-template-form-title">Nueva plantilla</h3>
+      <p className="hint" style={{ marginBottom: '1rem' }}>Usa <code>{'{{nombre}}'}</code>, <code>{'{{empresa}}'}</code> y <code>{'{{saludo}}'}</code> en el cuerpo. Se reemplazarán por el nombre del contacto, la empresa y Buenos días/Buenas tardes.</p>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Nombre de la plantilla</label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Primera toma de contacto" required />
+        </div>
+        <div className="form-group">
+          <label>Cuerpo (HTML)</label>
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="<p>Estimado {{nombre}}, {{saludo}}...</p>" rows={8} required style={{ maxWidth: '100%' }} />
+        </div>
+        <div className="form-group form-group-actions">
+          <button type="submit" className="btn btn-primary">Guardar plantilla</button>
+          <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml }) {
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState('')
   const [bcc, setBcc] = useState('')
   const [followUpInDays, setFollowUpInDays] = useState(7)
   const [viewBodyMode, setViewBodyMode] = useState('code')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
   const selectedParticipants = item.participants.filter((p) => selected[p.email])
+
+  const primaryName = item.primaryName || (item.participants[0]?.name) || 'Estimado/a'
+  const nombre = getFirstName(primaryName)
+  const empresa = item.orgName || 'la empresa'
+
+  function applyTemplate(templateId) {
+    setSelectedTemplateId(templateId)
+    const t = allTemplates.find((x) => x.id === templateId)
+    if (!t || !signatureHtml) return
+    const filled = fillPlaceholders(t.body, nombre, empresa)
+    const fullBody = filled + '\n' + signatureHtml
+    setEditedBodyHtml(item.activityId, fullBody)
+  }
 
   useEffect(() => {
     if (viewBodyMode === 'preview' && previewRef.current) {
@@ -437,6 +551,23 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
               </button>
             </div>
           </div>
+          {allTemplates.length > 0 && (
+            <div className="form-group form-group-template">
+              <label htmlFor={`template-${item.activityId}`}>Plantilla</label>
+              <select
+                id={`template-${item.activityId}`}
+                className="template-select"
+                value={selectedTemplateId}
+                onChange={(e) => applyTemplate(e.target.value)}
+              >
+                <option value="">— Seleccionar plantilla —</option>
+                {allTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Puedes editarlo después.</p>
+            </div>
+          )}
           <div className="form-group form-group-body">
             <label>Cuerpo del correo (HTML)</label>
             {viewBodyMode === 'code' ? (
