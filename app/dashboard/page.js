@@ -1,13 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useMemo } from 'react'
 
 export default function DashboardPage() {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState({})
   const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState(0)
+
+  const { byCompany, companyNames } = useMemo(() => {
+    const map = new Map()
+    for (const a of activities) {
+      const name = a.orgName || 'Sin empresa'
+      if (!map.has(name)) map.set(name, [])
+      map.get(name).push(a)
+    }
+    const names = Array.from(map.keys())
+    return { byCompany: map, companyNames: names }
+  }, [activities])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -18,12 +29,12 @@ export default function DashboardPage() {
         clearTimeout(timeout)
         if (!r.ok) {
           return r.json()
-          .then((data) => { throw new Error(data?.error || `Error ${r.status}`) })
-          .catch((e) => {
-            if (e instanceof Error && e.message && !e.message.startsWith('Error ')) throw e
-            if (e instanceof SyntaxError) throw new Error(`Error ${r.status}. Revisa variables de entorno en Vercel.`)
-            throw e
-          })
+            .then((data) => { throw new Error(data?.error || `Error ${r.status}`) })
+            .catch((e) => {
+              if (e instanceof Error && e.message && !e.message.startsWith('Error ')) throw e
+              if (e instanceof SyntaxError) throw new Error(`Error ${r.status}. Revisa variables de entorno en Vercel.`)
+              throw e
+            })
         }
         return r.json()
       })
@@ -33,7 +44,7 @@ export default function DashboardPage() {
       })
       .catch((e) => {
         if (e.name === 'AbortError') {
-          setError('La carga tardó demasiado. Puede que falten variables de entorno en Vercel o que Pipedrive esté lento.')
+          setError('La carga tardó demasiado. Revisa variables de entorno en Vercel o conexión con Pipedrive.')
         } else {
           setError(e.message || 'Error al cargar actividades')
         }
@@ -46,18 +57,24 @@ export default function DashboardPage() {
     }
   }, [])
 
-  async function handleSend(item, selectedParticipants) {
+  useEffect(() => {
+    if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
+  }, [companyNames.length, activeTab])
+
+  async function handleSend(item, selectedParticipants, cc, bcc) {
     if (selectedParticipants.length === 0) return
     setSending((s) => ({ ...s, [item.activityId]: true }))
     const subject = item.editedSubject ?? item.proposedSubject
     const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
+    const ccList = cc ? cc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
+    const bccList = bcc ? bcc.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : []
     let ok = true
     for (const p of selectedParticipants) {
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ to: p.email, subject, bodyHtml }),
+        body: JSON.stringify({ to: p.email, subject, bodyHtml, cc: ccList, bcc: bccList }),
       })
       if (!res.ok) ok = false
     }
@@ -91,11 +108,11 @@ export default function DashboardPage() {
 
   return (
     <div className="container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <header className="dash-header">
         <h1>Panel de correos – Vedisa Remates</h1>
         <button
           type="button"
-          className="btn"
+          className="btn-logout"
           onClick={async () => {
             await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
             window.location.href = '/login'
@@ -103,23 +120,55 @@ export default function DashboardPage() {
         >
           Cerrar sesión
         </button>
-      </div>
-      <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-        Actividades pendientes de Pipedrive. Edita el correo si quieres y elige a quién enviarlo (uno o varios). Al enviar, la actividad se marcará completada y se creará una nueva para +7 días.
+      </header>
+      <p className="dash-intro">
+        Actividades pendientes agrupadas por empresa. Edita el correo, elige destinatarios (solo de esa empresa), opcionalmente CC/CCO, y al enviar se marcará completada y se creará una nueva para +7 días.
       </p>
+
       {activities.length === 0 ? (
-        <div className="card">No hay actividades pendientes.</div>
+        <div className="empty-state">No hay actividades pendientes.</div>
       ) : (
-        activities.map((item) => (
-          <ActivityCard
-            key={item.activityId}
-            item={item}
-            onSend={handleSend}
-            sending={sending[item.activityId]}
-            setEditedSubject={setEditedSubject}
-            setEditedBodyHtml={setEditedBodyHtml}
-          />
-        ))
+        <>
+          <div className="tabs-wrap">
+            <div className="tabs-list" role="tablist">
+              {companyNames.map((name, i) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === i}
+                  className={`tab-btn ${activeTab === i ? 'active' : ''}`}
+                  onClick={() => setActiveTab(i)}
+                >
+                  {name}
+                  {byCompany.get(name).length > 1 && (
+                    <span style={{ marginLeft: '0.35rem', opacity: 0.8 }}>({byCompany.get(name).length})</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+          {companyNames.map((name, i) => (
+            <div
+              key={name}
+              role="tabpanel"
+              id={`tab-${i}`}
+              className={`tab-panel ${activeTab === i ? 'active' : ''}`}
+              aria-hidden={activeTab !== i}
+            >
+              {byCompany.get(name).map((item) => (
+                <ActivityCard
+                  key={item.activityId}
+                  item={item}
+                  onSend={handleSend}
+                  sending={sending[item.activityId]}
+                  setEditedSubject={setEditedSubject}
+                  setEditedBodyHtml={setEditedBodyHtml}
+                />
+              ))}
+            </div>
+          ))}
+        </>
       )}
     </div>
   )
@@ -127,19 +176,20 @@ export default function DashboardPage() {
 
 function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml }) {
   const [selected, setSelected] = useState({})
+  const [cc, setCc] = useState('')
+  const [bcc, setBcc] = useState('')
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
   const selectedParticipants = item.participants.filter((p) => selected[p.email])
 
   return (
-    <div className="card">
+    <div className={`card ${item.isOverdue ? 'card-overdue' : ''}`}>
       <div className="activity-meta">
         <span className={item.isOverdue ? 'badge overdue' : 'badge'}>
           {item.isOverdue ? 'Atrasada' : 'Pendiente'}
         </span>
-        {' · '}
-        Actividad: {item.subject}
-        {item.dueDate && ` · Vence: ${item.dueDate}`}
+        <span>Actividad: {item.subject}</span>
+        {item.dueDate && <span>Vence: {item.dueDate}</span>}
       </div>
       <h3>{item.orgName}</h3>
       <div className="form-group">
@@ -158,24 +208,48 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
         />
       </div>
       <div className="form-group">
-        <label>Enviar a (elegir uno o más)</label>
-        <div className="checkbox-group">
-          {item.participants.map((p) => (
-            <label key={p.email}>
-              <input
-                type="checkbox"
-                checked={!!selected[p.email]}
-                onChange={(e) => setSelected((s) => ({ ...s, [p.email]: e.target.checked }))}
-              />
-              {p.name} &lt;{p.email}&gt;
-            </label>
-          ))}
-        </div>
+        <label>Enviar a (solo contactos de esta empresa – elegir uno o más)</label>
+        {item.participants.length === 0 ? (
+          <p className="hint">No hay contactos con email en esta empresa en Pipedrive.</p>
+        ) : (
+          <div className="checkbox-group">
+            {item.participants.map((p) => (
+              <label key={p.email}>
+                <input
+                  type="checkbox"
+                  checked={!!selected[p.email]}
+                  onChange={(e) => setSelected((s) => ({ ...s, [p.email]: e.target.checked }))}
+                />
+                {p.name} &lt;{p.email}&gt;
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="form-group">
+        <label>CC (opcional)</label>
+        <input
+          type="text"
+          placeholder="ej: otro@empresa.com, otro2@empresa.com"
+          value={cc}
+          onChange={(e) => setCc(e.target.value)}
+        />
+        <p className="hint">Correos separados por coma, espacio o punto y coma.</p>
+      </div>
+      <div className="form-group">
+        <label>CCO / BCC (opcional)</label>
+        <input
+          type="text"
+          placeholder="ej: copia@vedisaremates.cl"
+          value={bcc}
+          onChange={(e) => setBcc(e.target.value)}
+        />
+        <p className="hint">Copia oculta. Mismos destinatarios en cada envío de esta actividad.</p>
       </div>
       <button
         className="btn btn-primary"
         disabled={selectedParticipants.length === 0 || sending}
-        onClick={() => onSend(item, selectedParticipants)}
+        onClick={() => onSend(item, selectedParticipants, cc, bcc)}
       >
         {sending ? 'Enviando…' : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
       </button>

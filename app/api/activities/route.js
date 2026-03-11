@@ -30,33 +30,32 @@ export async function GET() {
         } catch (_) {}
       }
 
-      const personIds = new Set()
-      if (personId) personIds.add(personId)
+      // Solo participantes de esta empresa (org): no mezclar con otras organizaciones
       if (orgId) {
         try {
           const orgPersons = await getPersonsByOrg(orgId)
-          orgPersons.forEach((p) => personIds.add(p.id))
+          const seen = new Set()
+          for (const person of orgPersons) {
+            const email = getPrimaryEmail(person)
+            if (!email || seen.has(email)) continue
+            seen.add(email)
+            const name = person?.name || email
+            if (person.id === personId) primaryName = name
+            participants.push({ personId: person.id, name, email })
+          }
         } catch (_) {}
-      }
-
-      for (const pid of personIds) {
+      } else if (personId) {
         try {
-          const person = await getPerson(pid)
+          const person = await getPerson(personId)
           const email = getPrimaryEmail(person)
-          if (!email) continue
-          const name = person?.name || email
-          if (personId === pid) primaryName = name
-          participants.push({ personId: pid, name, email })
+          if (email) {
+            primaryName = person?.name || email
+            participants.push({ personId: personId, name: primaryName, email })
+          }
         } catch (_) {}
       }
 
-      const dedup = []
-      const seen = new Set()
-      for (const p of participants) {
-        if (seen.has(p.email)) continue
-        seen.add(p.email)
-        dedup.push(p)
-      }
+      const dedup = participants
 
       const { subject: proposedSubject, bodyHtml: proposedBodyHtml } = buildFollowUpEmail({
         personName: primaryName,

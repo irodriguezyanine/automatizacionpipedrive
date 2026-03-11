@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req) {
   try {
     const body = await req.json()
-    const { to, subject, bodyHtml, fromPreset = 'comercial' } = body
+    const { to, subject, bodyHtml, fromPreset = 'comercial', cc, bcc } = body
     if (!to || !subject) {
       return Response.json({ error: 'Faltan to o subject' }, { status: 400 })
     }
@@ -14,6 +14,8 @@ export async function POST(req) {
       subject,
       bodyHtml: bodyHtml || '',
       fromPreset,
+      cc: cc || [],
+      bcc: bcc || [],
     })
     return Response.json({ success: true })
   } catch (err) {
