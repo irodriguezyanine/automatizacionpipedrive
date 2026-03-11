@@ -16,6 +16,35 @@ export async function GET() {
     const overdueIds = new Set(overdue.map((a) => a.id))
     const results = []
 
+    const orgCache = new Map()
+    const personCache = new Map()
+
+    async function getOrgCached(orgId) {
+      if (orgId == null) return null
+      const id = Number(orgId)
+      if (orgCache.has(id)) return orgCache.get(id)
+      try {
+        const org = await getOrganization(id)
+        orgCache.set(id, org)
+        return org
+      } catch (_) {
+        return null
+      }
+    }
+
+    async function getPersonCached(pid) {
+      if (pid == null) return null
+      const id = Number(pid)
+      if (personCache.has(id)) return personCache.get(id)
+      try {
+        const person = await getPerson(id)
+        personCache.set(id, person)
+        return person
+      } catch (_) {
+        return null
+      }
+    }
+
     for (const activity of all) {
       const orgId = activity.org_id
       const personId = activity.person_id
@@ -24,10 +53,8 @@ export async function GET() {
       const participants = []
 
       if (orgId) {
-        try {
-          const org = await getOrganization(orgId)
-          orgName = org?.name || orgName
-        } catch (_) {}
+        const org = await getOrgCached(orgId)
+        if (org?.name) orgName = org.name
       }
 
       const personIds = new Set()
@@ -51,15 +78,13 @@ export async function GET() {
 
       const seen = new Set()
       for (const pid of personIds) {
-        try {
-          const person = await getPerson(pid)
-          const email = getPrimaryEmail(person)
-          if (!email || seen.has(email)) continue
-          seen.add(email)
-          const name = person?.name || email
-          if (pid === personId) primaryName = name
-          participants.push({ personId: pid, name, email })
-        } catch (_) {}
+        const person = await getPersonCached(pid)
+        const email = getPrimaryEmail(person)
+        if (!email || seen.has(email)) continue
+        seen.add(email)
+        const name = person?.name || email
+        if (pid === personId) primaryName = name
+        participants.push({ personId: pid, name, email })
       }
 
       const dedup = participants

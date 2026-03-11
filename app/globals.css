@@ -682,6 +682,30 @@ input, textarea, button, select {
   to { transform: rotate(360deg); }
 }
 
+/* Skeleton loading */
+.skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.5rem 0;
+}
+.skeleton-card {
+  height: 220px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    90deg,
+    var(--neutral-100) 25%,
+    var(--neutral-200) 50%,
+    var(--neutral-100) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Login */
 .login-wrap {
   min-height: 100vh;

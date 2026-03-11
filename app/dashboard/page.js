@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo } from 'react'
+
+const SentEmailsView = lazy(() => import('./SentEmailsView'))
 
 export default function DashboardPage() {
   const [activities, setActivities] = useState([])
@@ -18,16 +20,6 @@ export default function DashboardPage() {
   const [showNewTemplate, setShowNewTemplate] = useState(false)
 
   const allTemplates = useMemo(() => [...templates, ...customTemplates], [templates, customTemplates])
-
-  useEffect(() => {
-    fetch('/api/templates', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.templates) setTemplates(data.templates)
-        if (data.signatureHtml) setSignatureHtml(data.signatureHtml)
-      })
-      .catch(() => {})
-  }, [])
 
   useEffect(() => {
     try {
@@ -72,23 +64,36 @@ export default function DashboardPage() {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 25000)
 
-    fetch('/api/activities', { credentials: 'include', signal: controller.signal })
-      .then((r) => {
+    Promise.all([
+      fetch('/api/activities', { credentials: 'include', signal: controller.signal }),
+      fetch('/api/templates', { credentials: 'include' }),
+    ])
+      .then(([activitiesRes, templatesRes]) => {
         clearTimeout(timeout)
-        if (!r.ok) {
-          return r.json()
-            .then((data) => { throw new Error(data?.error || `Error ${r.status}`) })
+        if (templatesRes.ok) {
+          return templatesRes.json().then((data) => {
+            if (data.templates) setTemplates(data.templates)
+            if (data.signatureHtml) setSignatureHtml(data.signatureHtml)
+            return activitiesRes
+          })
+        }
+        return activitiesRes
+      })
+      .then((activitiesRes) => {
+        if (!activitiesRes.ok) {
+          return activitiesRes.json()
+            .then((data) => { throw new Error(data?.error || `Error ${activitiesRes.status}`) })
             .catch((e) => {
               if (e instanceof Error && e.message && !e.message.startsWith('Error ')) throw e
-              if (e instanceof SyntaxError) throw new Error(`Error ${r.status}. Revisa variables de entorno en Vercel.`)
+              if (e instanceof SyntaxError) throw new Error(`Error ${activitiesRes.status}. Revisa variables de entorno en Vercel.`)
               throw e
             })
         }
-        return r.json()
+        return activitiesRes.json()
       })
       .then((data) => {
-        if (data.error) throw new Error(data.error)
-        setActivities(Array.isArray(data) ? data : [])
+        if (data && data.error) throw new Error(data.error)
+        if (data && Array.isArray(data)) setActivities(data)
       })
       .catch((e) => {
         if (e.name === 'AbortError') {
@@ -182,16 +187,16 @@ export default function DashboardPage() {
     setSending((s) => ({ ...s, [item.activityId]: false }))
   }
 
-  function setEditedSubject(activityId, value) {
+  const setEditedSubject = useCallback((activityId, value) => {
     setActivities((prev) =>
       prev.map((a) => (a.activityId === activityId ? { ...a, editedSubject: value } : a))
     )
-  }
-  function setEditedBodyHtml(activityId, value) {
+  }, [])
+  const setEditedBodyHtml = useCallback((activityId, value) => {
     setActivities((prev) =>
       prev.map((a) => (a.activityId === activityId ? { ...a, editedBodyHtml: value } : a))
     )
-  }
+  }, [])
 
   if (loading) {
     return (
@@ -202,7 +207,7 @@ export default function DashboardPage() {
           </div>
         </header>
         <main className="container main-content">
-          <div className="loading">Cargando actividades…</div>
+          <LoadingSkeleton />
         </main>
       </div>
     )
@@ -267,11 +272,13 @@ export default function DashboardPage() {
       </header>
       <main className="container main-content">
         {dashboardView === 'sent' ? (
-          <SentEmailsView
-            list={sentEmails}
-            loading={sentEmailsLoading}
-            onRefresh={loadSentEmails}
-          />
+          <Suspense fallback={<div className="loading">Cargando correos enviados…</div>}>
+            <SentEmailsView
+              list={sentEmails}
+              loading={sentEmailsLoading}
+              onRefresh={loadSentEmails}
+            />
+          </Suspense>
         ) : (
           <>
         <h2 className="page-title">Enviar correos</h2>
@@ -327,6 +334,7 @@ export default function DashboardPage() {
                   setEditedBodyHtml={setEditedBodyHtml}
                   allTemplates={allTemplates}
                   signatureHtml={signatureHtml}
+                  onRequestNewTemplate={() => setShowNewTemplate(true)}
                 />
               ))}
             </div>
@@ -343,70 +351,12 @@ export default function DashboardPage() {
   )
 }
 
-function SentEmailsView({ list, loading, onRefresh }) {
-  const formatDate = (iso) => {
-    if (!iso) return '—'
-    const d = new Date(iso)
-    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  }
-  const statusLabel = (s) => (s === 'entregado' ? 'Entregado' : s === 'rebote' ? 'Rebote' : s === 'queja' ? 'Queja' : 'Enviado')
-  const statusClass = (s) => (s === 'entregado' ? 'status-ok' : s === 'rebote' || s === 'queja' ? 'status-error' : 'status-sent')
-
+function LoadingSkeleton() {
   return (
-    <div className="sent-emails-view">
-      <div className="sent-emails-header">
-        <h2 className="page-title">Correos enviados</h2>
-        <p className="dash-intro" style={{ marginBottom: 0 }}>
-          Listado de correos enviados desde el panel. El estado <strong>Entregado</strong> se actualiza cuando AWS SES notifica la entrega (Configuration Set + SNS), como en TasacionesVedisa.
-        </p>
-        <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
-          {loading ? 'Actualizando…' : 'Actualizar lista'}
-        </button>
-      </div>
-      {loading && list.length === 0 ? (
-        <div className="loading">Cargando correos enviados…</div>
-      ) : list.length === 0 ? (
-        <div className="empty-state">Aún no hay correos enviados desde el panel.</div>
-      ) : (
-        <div className="sent-emails-table-wrap">
-          <table className="sent-emails-table" role="grid">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Empresa</th>
-                <th>Asunto</th>
-                <th>Destinatarios</th>
-                <th>Estado</th>
-                <th>MessageId (SES)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((row) => (
-                <tr key={`${row.activityId}-${row.sentAt}-${row.sentTo?.[0] || ''}`}>
-                  <td className="sent-emails-date">{formatDate(row.sentAt)}</td>
-                  <td className="sent-emails-org">{row.orgName || '—'}</td>
-                  <td className="sent-emails-subject">{row.subject || '—'}</td>
-                  <td className="sent-emails-to">
-                    {Array.isArray(row.sentTo) && row.sentTo.length
-                      ? row.sentTo.join(', ')
-                      : '—'}
-                  </td>
-                  <td>
-                    <span className={`status-badge ${statusClass(row.status)}`}>
-                      {statusLabel(row.status)}
-                    </span>
-                  </td>
-                  <td className="sent-emails-mid">
-                    {Array.isArray(row.messageIds) && row.messageIds.length
-                      ? row.messageIds[0] + (row.messageIds.length > 1 ? ` (+${row.messageIds.length - 1})` : '')
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+    <div className="skeleton-wrap" aria-hidden="true">
+      <div className="skeleton-card" />
+      <div className="skeleton-card" />
+      <div className="skeleton-card" />
     </div>
   )
 }
@@ -471,7 +421,7 @@ function NewTemplateForm({ onSave, onCancel }) {
   )
 }
 
-function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml }) {
+const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml, onRequestNewTemplate }) {
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState('')
   const [bcc, setBcc] = useState('')
@@ -488,6 +438,11 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
   const empresa = item.orgName || 'la empresa'
 
   function applyTemplate(templateId) {
+    if (templateId === '__new__') {
+      onRequestNewTemplate?.()
+      setSelectedTemplateId('')
+      return
+    }
     setSelectedTemplateId(templateId)
     const t = allTemplates.find((x) => x.id === templateId)
     if (!t || !signatureHtml) return
@@ -500,7 +455,7 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
     if (viewBodyMode === 'preview' && previewRef.current) {
       previewRef.current.innerHTML = bodyHtml || '<p><em>Sin contenido</em></p>'
     }
-  }, [viewBodyMode])
+  }, [viewBodyMode, bodyHtml])
 
   function syncPreviewToState() {
     if (previewRef.current) setEditedBodyHtml(item.activityId, previewRef.current.innerHTML)
@@ -551,10 +506,9 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
               </button>
             </div>
           </div>
-          {allTemplates.length > 0 && (
-            <div className="form-group form-group-template">
-              <label htmlFor={`template-${item.activityId}`}>Plantilla</label>
-              <select
+          <div className="form-group form-group-template">
+            <label htmlFor={`template-${item.activityId}`}>Plantilla</label>
+            <select
                 id={`template-${item.activityId}`}
                 className="template-select"
                 value={selectedTemplateId}
@@ -564,10 +518,10 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
                 {allTemplates.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
+                <option value="__new__">＋ Crear nueva plantilla</option>
               </select>
-              <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Puedes editarlo después.</p>
-            </div>
-          )}
+            <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Puedes editarlo después o crear una nueva.</p>
+          </div>
           <div className="form-group form-group-body">
             <label>Cuerpo del correo (HTML)</label>
             {viewBodyMode === 'code' ? (
@@ -697,4 +651,4 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
       </div>
     </div>
   )
-}
+})
