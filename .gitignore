@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+
+# Next.js
+.next
+out
+
+# Environment (credenciales – NO subir)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs

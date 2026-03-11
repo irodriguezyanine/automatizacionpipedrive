@@ -1,0 +1,24 @@
+{
+  "name": "automatizacion-pipedrive",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Automatización Pipedrive: panel de aprobación de correos y envío desde Vedisa Remates",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "run": "node src/run.mjs",
+    "run:dry": "node src/run.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.700.0",
+    "dotenv": "^16.4.5",
+    "next": "^14.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
