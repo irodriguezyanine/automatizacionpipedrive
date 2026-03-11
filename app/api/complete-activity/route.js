@@ -8,10 +8,24 @@ function addDays(date, days) {
   return d.toISOString().slice(0, 10)
 }
 
+function stripHtml(html) {
+  if (!html || typeof html !== 'string') return ''
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .trim()
+}
+
 export async function POST(req) {
   try {
     const body = await req.json()
-    const { activityId } = body
+    const { activityId, subject, bodyHtml, sentTo } = body
     if (!activityId) {
       return Response.json({ error: 'Falta activityId' }, { status: 400 })
     }
@@ -19,7 +33,15 @@ export async function POST(req) {
     if (!activity) {
       return Response.json({ error: 'Actividad no encontrada' }, { status: 404 })
     }
-    await markActivityDone(activityId)
+
+    const noteParts = ['Completada desde panel Vedisa. Correo enviado:\n']
+    if (subject) noteParts.push(`Asunto: ${subject}\n`)
+    if (Array.isArray(sentTo) && sentTo.length) noteParts.push(`Enviado a: ${sentTo.join(', ')}\n`)
+    if (bodyHtml) noteParts.push(`\n--- Cuerpo del correo ---\n${stripHtml(bodyHtml)}`)
+    const note = noteParts.join('')
+
+    await markActivityDone(activityId, note)
+
     const dueIn7 = addDays(new Date(), 7)
     await createActivity({
       subject: `Seguimiento (automático): ${activity.subject || 'Seguimiento'}`,
@@ -29,8 +51,9 @@ export async function POST(req) {
       deal_id: activity.deal_id,
       person_id: activity.person_id,
       org_id: activity.org_id,
-      note: `Creado por panel desde actividad #${activityId}.`,
+      note: `Creado por panel desde actividad #${activityId}. Próximo seguimiento ${dueIn7}.`,
     })
+
     return Response.json({ success: true, dueDate: dueIn7 })
   } catch (err) {
     console.error(err)

@@ -8,6 +8,13 @@ export default function DashboardPage() {
   const [sending, setSending] = useState({})
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState(0)
+  const [toast, setToast] = useState(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 5000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   const { byCompany, companyNames } = useMemo(() => {
     const map = new Map()
@@ -79,15 +86,26 @@ export default function DashboardPage() {
       if (!res.ok) ok = false
     }
     if (ok) {
+      const sentToEmails = selectedParticipants.map((p) => p.email)
       const res = await fetch('/api/complete-activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ activityId: item.activityId }),
+        body: JSON.stringify({
+          activityId: item.activityId,
+          subject,
+          bodyHtml,
+          sentTo: sentToEmails,
+        }),
       })
       if (res.ok) {
         setActivities((prev) => prev.filter((a) => a.activityId !== item.activityId))
+        setToast({ type: 'success', message: 'Correo(s) enviado(s). Actividad completada y nueva programada en 7 días.' })
+      } else {
+        setToast({ type: 'error', message: 'No se pudo completar la actividad en Pipedrive.' })
       }
+    } else {
+      setToast({ type: 'error', message: 'Error al enviar algún correo.' })
     }
     setSending((s) => ({ ...s, [item.activityId]: false }))
   }
@@ -107,46 +125,53 @@ export default function DashboardPage() {
   if (error) return <div className="container"><div className="card"><p className="error">{error}</p></div></div>
 
   return (
-    <div className="container">
+    <div className="dashboard-wrap">
+      {toast && (
+        <div className={`toast toast-${toast.type}`} role="status">
+          {toast.message}
+        </div>
+      )}
       <header className="dash-header">
-        <h1>Panel de correos – Vedisa Remates</h1>
-        <button
-          type="button"
-          className="btn-logout"
-          onClick={async () => {
-            await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
-            window.location.href = '/login'
-          }}
-        >
-          Cerrar sesión
-        </button>
+        <div className="dash-header-inner">
+          <h1>Panel de correos</h1>
+          <span className="dash-header-sub">Vedisa Remates</span>
+          <button
+            type="button"
+            className="btn-logout"
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+              window.location.href = '/login'
+            }}
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </header>
-      <p className="dash-intro">
-        Actividades pendientes agrupadas por empresa. Edita el correo, elige destinatarios (solo de esa empresa), opcionalmente CC/CCO, y al enviar se marcará completada y se creará una nueva para +7 días.
-      </p>
+      <main className="container">
+        <p className="dash-intro">
+          Actividades pendientes por empresa. Al enviar, la actividad se marca <strong>Completada</strong> con el correo enviado y se crea una nueva para dentro de 7 días.
+        </p>
 
       {activities.length === 0 ? (
         <div className="empty-state">No hay actividades pendientes.</div>
       ) : (
         <>
-          <div className="tabs-wrap">
-            <div className="tabs-list" role="tablist">
+          <div className="company-dropdown-wrap">
+            <label htmlFor="company-select" className="company-dropdown-label">Empresa / negocio</label>
+            <select
+              id="company-select"
+              className="company-dropdown"
+              value={activeTab}
+              onChange={(e) => setActiveTab(Number(e.target.value))}
+              aria-label="Seleccionar empresa"
+            >
               {companyNames.map((name, i) => (
-                <button
-                  key={name}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === i}
-                  className={`tab-btn ${activeTab === i ? 'active' : ''}`}
-                  onClick={() => setActiveTab(i)}
-                >
+                <option key={name} value={i}>
                   {name}
-                  {byCompany.get(name).length > 1 && (
-                    <span style={{ marginLeft: '0.35rem', opacity: 0.8 }}>({byCompany.get(name).length})</span>
-                  )}
-                </button>
+                  {byCompany.get(name).length > 1 ? ` (${byCompany.get(name).length} actividades)` : ''}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
           {companyNames.map((name, i) => (
             <div
@@ -170,6 +195,10 @@ export default function DashboardPage() {
           ))}
         </>
       )}
+      </main>
+      <footer className="dash-footer">
+        <span>Vedisa Remates · Panel de seguimiento Pipedrive</span>
+      </footer>
     </div>
   )
 }
@@ -178,6 +207,7 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState('')
   const [bcc, setBcc] = useState('')
+  const [viewBodyMode, setViewBodyMode] = useState('code')
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
   const selectedParticipants = item.participants.filter((p) => selected[p.email])
@@ -201,11 +231,36 @@ function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHt
         />
       </div>
       <div className="form-group">
-        <label>Cuerpo del correo (HTML)</label>
-        <textarea
-          value={bodyHtml}
-          onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
-        />
+        <div className="body-email-header">
+          <label style={{ marginBottom: 0 }}>Cuerpo del correo (HTML)</label>
+          <div className="body-email-tabs">
+            <button
+              type="button"
+              className={viewBodyMode === 'code' ? 'active' : ''}
+              onClick={() => setViewBodyMode('code')}
+            >
+              Código HTML
+            </button>
+            <button
+              type="button"
+              className={viewBodyMode === 'preview' ? 'active' : ''}
+              onClick={() => setViewBodyMode('preview')}
+            >
+              Vista previa
+            </button>
+          </div>
+        </div>
+        {viewBodyMode === 'code' ? (
+          <textarea
+            value={bodyHtml}
+            onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
+          />
+        ) : (
+          <div
+            className="body-email-preview"
+            dangerouslySetInnerHTML={{ __html: bodyHtml || '<p><em>Sin contenido</em></p>' }}
+          />
+        )}
       </div>
       <div className="form-group">
         <label>Enviar a (solo contactos de esta empresa – elegir uno o más)</label>

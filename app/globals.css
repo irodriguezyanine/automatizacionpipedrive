@@ -1,13 +1,19 @@
 :root {
   --vedisa-azul: #33C7E3;
   --vedisa-azul-oscuro: #2aa8c0;
+  --vedisa-azul-muted: rgba(51, 199, 227, 0.12);
   --vedisa-dorado: #FFC600;
   --vedisa-gris: #AAAAAA;
   --vedisa-gris-oscuro: #6b7280;
-  --vedisa-bg: #f0f9fb;
+  --vedisa-bg: #f8fbfc;
   --vedisa-card: #ffffff;
   --vedisa-overdue: #fef2f2;
   --vedisa-overdue-border: #fecaca;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg: 0 12px 28px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04);
+  --radius: 12px;
+  --radius-lg: 16px;
 }
 
 * {
@@ -20,108 +26,174 @@ body {
   padding: 0;
   background: var(--vedisa-bg);
   color: #1f2937;
-  line-height: 1.5;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   color: var(--vedisa-azul-oscuro);
 }
 
-input, textarea, button {
+input, textarea, button, select {
   font: inherit;
 }
 
+/* Layout */
+.dashboard-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .container {
-  max-width: 1000px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 2rem 1.5rem;
+  width: 100%;
 }
 
 /* Header */
 .dash-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  color: #fff;
+  padding: 1.25rem 1.5rem;
+  box-shadow: var(--shadow-md);
+}
+
+.dash-header-inner {
+  max-width: 720px;
+  margin: 0 auto;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--vedisa-azul);
 }
 
 .dash-header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
-  color: #111827;
+  letter-spacing: -0.02em;
+}
+
+.dash-header-sub {
+  color: var(--vedisa-azul);
+  font-weight: 500;
+  font-size: 0.95rem;
+  margin-left: 0.5rem;
+  opacity: 0.95;
 }
 
 .dash-header .btn-logout {
   padding: 0.5rem 1rem;
   border-radius: 8px;
-  border: 1px solid var(--vedisa-gris);
-  background: var(--vedisa-card);
-  color: var(--vedisa-gris-oscuro);
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08);
+  color: #e2e8f0;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background 0.2s, color 0.2s;
 }
 
 .dash-header .btn-logout:hover {
-  background: #f3f4f6;
-  border-color: var(--vedisa-azul);
-  color: var(--vedisa-azul-oscuro);
+  background: rgba(255,255,255,.15);
+  color: #fff;
 }
 
 .dash-intro {
   color: var(--vedisa-gris-oscuro);
   font-size: 0.95rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
+  line-height: 1.6;
 }
 
-/* Tabs */
-.tabs-wrap {
-  margin-bottom: 0;
+.dash-intro strong {
+  color: #374151;
 }
 
-.tabs-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  border-bottom: 2px solid #e5e7eb;
-  padding-bottom: 0;
-  margin-bottom: 0;
-  overflow-x: auto;
-}
-
-.tab-btn {
-  padding: 0.75rem 1.25rem;
-  border: none;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  background: transparent;
-  color: var(--vedisa-gris-oscuro);
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.85rem 1.5rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
   font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  border-radius: 8px 8px 0 0;
-  transition: color 0.15s, background 0.15s;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  animation: toastIn 0.3s ease;
 }
 
-.tab-btn:hover {
-  color: var(--vedisa-azul-oscuro);
-  background: rgba(51, 199, 227, 0.08);
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
-.tab-btn.active {
-  color: var(--vedisa-azul-oscuro);
-  border-bottom-color: var(--vedisa-azul);
+.toast-success {
+  background: #059669;
+  color: #fff;
+}
+
+.toast-error {
+  background: #dc2626;
+  color: #fff;
+}
+
+/* Desplegable */
+.company-dropdown-wrap {
+  margin-bottom: 1.75rem;
+}
+
+.company-dropdown-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.01em;
+}
+
+.company-dropdown {
+  width: 100%;
+  max-width: 380px;
+  padding: 0.75rem 2.5rem 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   background: var(--vedisa-card);
+  font-size: 1rem;
+  color: #1f2937;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.company-dropdown:hover {
+  border-color: var(--vedisa-azul);
+}
+
+.company-dropdown:focus {
+  outline: none;
+  border-color: var(--vedisa-azul);
+  box-shadow: 0 0 0 3px var(--vedisa-azul-muted);
 }
 
 .tab-panel {
   display: none;
-  padding: 1.5rem 0;
-  animation: fadeIn 0.2s ease;
+  padding: 0.5rem 0 2rem 0;
+  animation: fadeIn 0.25s ease;
 }
 
 .tab-panel.active {
@@ -136,11 +208,16 @@ input, textarea, button {
 /* Cards */
 .card {
   background: var(--vedisa-card);
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
-  padding: 1.5rem;
-  margin-bottom: 1.25rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 1.75rem;
+  margin-bottom: 1.5rem;
   border: 1px solid #e5e7eb;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
 }
 
 .card.card-overdue {
@@ -150,9 +227,10 @@ input, textarea, button {
 
 .card h3 {
   margin: 0 0 1rem 0;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: #111827;
+  letter-spacing: -0.01em;
 }
 
 .activity-meta {
@@ -167,12 +245,14 @@ input, textarea, button {
 
 .badge {
   display: inline-block;
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
   font-size: 0.75rem;
   font-weight: 600;
   background: #e5e7eb;
   color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .badge.overdue {
@@ -181,32 +261,33 @@ input, textarea, button {
 }
 
 .form-group {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.35rem;
 }
 
 .form-group label {
   display: block;
   font-weight: 500;
   font-size: 0.9rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.4rem;
   color: #374151;
 }
 
 .form-group input,
 .form-group textarea {
   width: 100%;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   font-size: 0.95rem;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #fff;
 }
 
 .form-group input:focus,
 .form-group textarea:focus {
   outline: none;
   border-color: var(--vedisa-azul);
-  box-shadow: 0 0 0 3px rgba(51, 199, 227, 0.2);
+  box-shadow: 0 0 0 3px var(--vedisa-azul-muted);
 }
 
 .form-group textarea {
@@ -214,10 +295,65 @@ input, textarea, button {
   resize: vertical;
 }
 
+.body-email-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.body-email-tabs {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.body-email-tabs button {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.body-email-tabs button:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.body-email-tabs button.active {
+  background: var(--vedisa-azul);
+  color: #fff;
+  border-color: var(--vedisa-azul);
+}
+
+.body-email-preview {
+  min-height: 140px;
+  padding: 1.1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fafafa;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #1f2937;
+}
+
+.body-email-preview p {
+  margin: 0 0 0.75rem 0;
+}
+
+.body-email-preview p:last-child {
+  margin-bottom: 0;
+}
+
 .form-group .hint {
   font-size: 0.8rem;
   color: var(--vedisa-gris);
-  margin-top: 0.25rem;
+  margin-top: 0.3rem;
 }
 
 .checkbox-group {
@@ -242,30 +378,33 @@ input, textarea, button {
 }
 
 .btn {
-  padding: 0.6rem 1.25rem;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
+  padding: 0.7rem 1.35rem;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
   background: var(--vedisa-card);
   cursor: pointer;
   font-weight: 500;
   font-size: 0.95rem;
-  transition: background 0.15s, border-color 0.15s;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-primary {
-  background: var(--vedisa-azul);
+  background: linear-gradient(180deg, var(--vedisa-azul) 0%, var(--vedisa-azul-oscuro) 100%);
   color: #fff;
-  border-color: var(--vedisa-azul);
+  border: none;
+  box-shadow: 0 2px 8px rgba(51, 199, 227, 0.35);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--vedisa-azul-oscuro);
-  border-color: var(--vedisa-azul-oscuro);
+  filter: brightness(1.05);
+  box-shadow: 0 4px 12px rgba(51, 199, 227, 0.4);
 }
 
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  filter: none;
 }
 
 .error {
@@ -276,31 +415,42 @@ input, textarea, button {
 
 .loading {
   text-align: center;
-  padding: 3rem 2rem;
+  padding: 4rem 2rem;
   color: var(--vedisa-gris-oscuro);
   font-size: 1rem;
 }
 
 .login-form {
-  max-width: 340px;
+  max-width: 360px;
   margin: 4rem auto;
 }
 
 .login-form input {
   width: 100%;
-  padding: 0.6rem 0.75rem;
+  padding: 0.7rem 0.9rem;
   margin-bottom: 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
 }
 
 .empty-state {
   text-align: center;
-  padding: 2rem;
+  padding: 2.5rem;
   color: var(--vedisa-gris-oscuro);
   background: var(--vedisa-card);
-  border-radius: 12px;
-  border: 1px dashed #d1d5db;
+  border-radius: var(--radius-lg);
+  border: 2px dashed #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.dash-footer {
+  margin-top: auto;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--vedisa-gris);
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
 }
 
 .empty-tab {
