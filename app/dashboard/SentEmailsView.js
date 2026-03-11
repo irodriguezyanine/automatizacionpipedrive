@@ -9,6 +9,18 @@ export default function SentEmailsView({ list, loading, onRefresh }) {
   const statusLabel = (s) => (s === 'entregado' ? 'Entregado' : s === 'rebote' ? 'Rebote' : s === 'queja' ? 'Queja' : 'Enviado')
   const statusClass = (s) => (s === 'entregado' ? 'status-ok' : s === 'rebote' || s === 'queja' ? 'status-error' : 'status-sent')
 
+  /** Asegura mostrar solo correos (sin HTML mailto). */
+  function formatDestinatarios(sentTo) {
+    if (!Array.isArray(sentTo) || !sentTo.length) return '—'
+    const plain = sentTo.map((item) => {
+      const s = String(item).trim()
+      if (!s) return ''
+      const m = s.match(/mailto:([^\s"'>]+)/i)
+      return m ? m[1].trim() : s.replace(/<[^>]+>/g, '').trim()
+    }).filter(Boolean)
+    return plain.length ? plain.join(', ') : '—'
+  }
+
   return (
     <div className="sent-emails-view">
       <div className="sent-emails-header">
@@ -44,9 +56,7 @@ export default function SentEmailsView({ list, loading, onRefresh }) {
                   <td className="sent-emails-org">{row.orgName || '—'}</td>
                   <td className="sent-emails-subject">{row.subject || '—'}</td>
                   <td className="sent-emails-to">
-                    {Array.isArray(row.sentTo) && row.sentTo.length
-                      ? row.sentTo.join(', ')
-                      : '—'}
+                    {formatDestinatarios(row.sentTo)}
                   </td>
                   <td>
                     <span className={`status-badge ${statusClass(row.status)}`}>
