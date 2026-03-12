@@ -225,7 +225,15 @@ export default function DashboardPage() {
       const days = data?.followUpInDays ?? followUpInDays ?? 7
       const periodText = days === 7 ? '7 días' : days === 14 ? '2 semanas' : days === 21 ? '3 semanas' : days === 30 ? '1 mes' : days === 60 ? '2 meses' : `${days} días`
       if (res.ok) {
-        setActivities((prev) => prev.filter((a) => a.activityId !== item.activityId))
+        setActivities((prev) =>
+          prev
+            .filter((a) => a.activityId !== item.activityId)
+            .sort((a, b) => {
+              const da = a.dueDate ? new Date(a.dueDate).getTime() : 0
+              const db = b.dueDate ? new Date(b.dueDate).getTime() : 0
+              return da - db
+            })
+        )
         setToast({ type: 'success', message: `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.` })
       } else {
         const errData = await res.json().catch(() => ({}))
@@ -335,7 +343,7 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          Actividades pendientes por empresa. Elige una plantilla o crea una nueva. Cada destinatario recibe un correo en su buzón. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva según el plazo elegido.
+          Actividades pendientes por empresa (hasta 30, por fecha de vencimiento). Elige una plantilla o crea una nueva. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva; la lista se actualiza y reordena sola. Usa <strong>Actualizar lista</strong> para traer más desde Pipedrive.
         </p>
 
       {showNewTemplate && (
