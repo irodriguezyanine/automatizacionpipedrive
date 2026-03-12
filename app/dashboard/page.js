@@ -189,7 +189,8 @@ export default function DashboardPage() {
     const sendErrors = []
     for (const p of selectedParticipants) {
       const nombre = getFirstName(p.name)
-      const bodyForRecipient = personalizeGreeting(bodyHtml, nombre)
+      const empresa = item.orgName || 'la empresa'
+      const bodyForRecipient = fillPlaceholders(bodyHtml, nombre, empresa)
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -652,8 +653,9 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
     setSelectedTemplateId(templateId)
     const t = allTemplates.find((x) => x.id === templateId)
     if (!t || !signatureHtml) return
-    const filled = fillPlaceholders(t.body, nombre, empresa)
-    const fullBody = filled + '\n' + signatureHtml
+    // Dejar la plantilla con placeholders {{nombre}}, {{empresa}}, {{saludo}} para que al enviar
+    // se reemplace el nombre por cada destinatario (no rellenar aquí con el primer participante).
+    const fullBody = t.body + '\n' + signatureHtml
     setEditedBodyHtml(item.activityId, fullBody)
     if (viewBodyMode === 'preview' && previewRef.current) {
       previewRef.current.innerHTML = fullBody || '<p><em>Sin contenido</em></p>'
@@ -739,7 +741,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
                 ))}
                 <option value="__new__">＋ Crear nueva plantilla</option>
               </select>
-            <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Puedes editarlo después o crear una nueva.</p>
+            <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Usa <code>{'{{nombre}}'}</code> para el nombre (se cambiará por cada destinatario al enviar), <code>{'{{empresa}}'}</code> y <code>{'{{saludo}}'}</code>. Puedes editarlo después o crear una nueva.</p>
             {isCreatingNewTemplate && (
               <div className="new-template-inline">
                 <label htmlFor={`new-template-name-${item.activityId}`}>Nombre de la plantilla</label>
@@ -761,6 +763,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
           </div>
           <div className="form-group form-group-body">
             <label>Cuerpo del correo (HTML)</label>
+            <p className="hint hint-body">Escribe <code>{'{{nombre}}'}</code> donde quieras el nombre del destinatario; al enviar se reemplazará por el de cada persona. También: <code>{'{{empresa}}'}</code>, <code>{'{{saludo}}'}</code>.</p>
             {viewBodyMode === 'code' ? (
               <textarea
                 value={bodyHtml}
