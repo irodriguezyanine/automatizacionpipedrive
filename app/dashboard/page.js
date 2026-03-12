@@ -559,10 +559,31 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [isCreatingNewTemplate, setIsCreatingNewTemplate] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
+  const [extraRecipients, setExtraRecipients] = useState([])
+  const [addEmailInput, setAddEmailInput] = useState('')
   const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
-  const selectedParticipants = item.participants.filter((p) => selected[p.email])
+  const displayParticipants = [...item.participants, ...extraRecipients.map((e) => ({ personId: null, name: e.email, email: e.email }))]
+  const selectedParticipants = displayParticipants.filter((p) => selected[p.email])
+
+  function addExtraRecipient(email) {
+    const e = String(email).trim().toLowerCase()
+    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return
+    if (item.participants.some((p) => p.email.toLowerCase() === e) || extraRecipients.some((r) => r.email.toLowerCase() === e)) return
+    setExtraRecipients((prev) => [...prev, { email: e }])
+    setSelected((s) => ({ ...s, [e]: true }))
+    setAddEmailInput('')
+  }
+
+  function removeExtraRecipient(email) {
+    setExtraRecipients((prev) => prev.filter((r) => r.email !== email))
+    setSelected((s) => {
+      const next = { ...s }
+      delete next[email]
+      return next
+    })
+  }
 
   const primaryName = item.primaryName || (item.participants[0]?.name) || 'Estimado/a'
   const nombre = getFirstName(primaryName)
@@ -574,6 +595,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
       const minimalBody = MINIMAL_NEW_TEMPLATE_BODY + (signatureHtml || '')
       setEditedBodyHtml(item.activityId, minimalBody)
       setViewBodyMode('preview')
+      if (previewRef.current) previewRef.current.innerHTML = minimalBody || '<p><em>Sin contenido</em></p>'
       setIsCreatingNewTemplate(true)
       setNewTemplateName('')
       return
@@ -585,6 +607,9 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
     const filled = fillPlaceholders(t.body, nombre, empresa)
     const fullBody = filled + '\n' + signatureHtml
     setEditedBodyHtml(item.activityId, fullBody)
+    if (viewBodyMode === 'preview' && previewRef.current) {
+      previewRef.current.innerHTML = fullBody || '<p><em>Sin contenido</em></p>'
+    }
   }
 
   function handleSaveNewTemplate() {
@@ -601,7 +626,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
     if (viewBodyMode === 'preview' && previewRef.current) {
       previewRef.current.innerHTML = bodyHtml || '<p><em>Sin contenido</em></p>'
     }
-  }, [viewBodyMode, bodyHtml])
+  }, [viewBodyMode])
 
   function syncPreviewToState() {
     if (previewRef.current) setEditedBodyHtml(item.activityId, previewRef.current.innerHTML)
@@ -754,22 +779,48 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
         <div className="card-side">
           <div className="form-group">
             <label>Enviar a (un correo por separado a cada uno)</label>
-            {item.participants.length === 0 ? (
-              <p className="hint">No hay contactos con email en esta empresa en Pipedrive.</p>
+            {displayParticipants.length === 0 ? (
+              <p className="hint">No hay contactos con email. Agrega uno abajo.</p>
             ) : (
               <div className="checkbox-group">
-                {item.participants.map((p) => (
-                  <label key={p.email}>
-                    <input
-                      type="checkbox"
-                      checked={!!selected[p.email]}
-                      onChange={(e) => setSelected((s) => ({ ...s, [p.email]: e.target.checked }))}
-                    />
-                    {p.name} &lt;{p.email}&gt;
-                  </label>
-                ))}
+                {displayParticipants.map((p) => {
+                  const isExtra = extraRecipients.some((r) => r.email === p.email)
+                  return (
+                    <label key={p.email} className={isExtra ? 'recipient-row recipient-row-extra' : 'recipient-row'}>
+                      <input
+                        type="checkbox"
+                        checked={!!selected[p.email]}
+                        onChange={(e) => setSelected((s) => ({ ...s, [p.email]: e.target.checked }))}
+                      />
+                      <span>{p.name} &lt;{p.email}&gt;</span>
+                      {isExtra && (
+                        <button
+                          type="button"
+                          className="recipient-remove"
+                          onClick={(e) => { e.preventDefault(); removeExtraRecipient(p.email) }}
+                          aria-label={`Quitar ${p.email}`}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </label>
+                  )
+                })}
               </div>
             )}
+            <div className="add-recipient-wrap">
+              <input
+                type="text"
+                className="add-recipient-input"
+                placeholder="Agregar otro correo…"
+                value={addEmailInput}
+                onChange={(e) => setAddEmailInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addExtraRecipient(addEmailInput) } }}
+              />
+              <button type="button" className="btn btn-secondary" onClick={() => addExtraRecipient(addEmailInput)}>
+                Agregar
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label>CC (opcional)</label>

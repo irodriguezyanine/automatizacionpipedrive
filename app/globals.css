@@ -736,6 +736,54 @@ input, textarea, button, select {
   accent-color: var(--vedisa-azul);
 }
 
+.recipient-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.recipient-row span {
+  flex: 1;
+}
+.recipient-remove {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--neutral-100);
+  color: var(--neutral-500);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.recipient-remove:hover {
+  background: var(--vedisa-overdue);
+  color: var(--error);
+}
+.recipient-row-extra {
+  padding-right: 0.25rem;
+}
+
+.add-recipient-wrap {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  align-items: center;
+}
+.add-recipient-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+}
+.add-recipient-input:focus {
+  outline: none;
+  border-color: var(--vedisa-azul);
+}
+
 .btn {
   padding: 0.5625rem 1.125rem;
   border-radius: var(--radius);
