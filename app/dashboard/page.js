@@ -585,16 +585,32 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   const [newTemplateName, setNewTemplateName] = useState('')
   const [extraRecipients, setExtraRecipients] = useState([])
   const [addEmailInput, setAddEmailInput] = useState('')
+  const [addRecipientMsg, setAddRecipientMsg] = useState('')
+  const addEmailInputRef = useRef(null)
   const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
   const displayParticipants = [...item.participants, ...extraRecipients.map((e) => ({ personId: null, name: e.email, email: e.email }))]
   const selectedParticipants = displayParticipants.filter((p) => selected[p.email])
 
-  function addExtraRecipient(email) {
-    const e = String(email).trim().toLowerCase()
-    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return
-    if (item.participants.some((p) => p.email.toLowerCase() === e) || extraRecipients.some((r) => r.email.toLowerCase() === e)) return
+  function addExtraRecipient(rawValue) {
+    const raw = rawValue ?? addEmailInputRef.current?.value ?? addEmailInput
+    const e = String(raw || '').trim().toLowerCase()
+    setAddRecipientMsg('')
+    if (!e) {
+      setAddRecipientMsg('Escribe un correo para agregar.')
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      setAddRecipientMsg('Correo no válido.')
+      return
+    }
+    const alreadyInParticipants = item.participants.some((p) => p.email && String(p.email).toLowerCase() === e)
+    const alreadyExtra = extraRecipients.some((r) => r.email.toLowerCase() === e)
+    if (alreadyInParticipants || alreadyExtra) {
+      setAddRecipientMsg('Ese correo ya está en la lista.')
+      return
+    }
     setExtraRecipients((prev) => [...prev, { email: e }])
     setSelected((s) => ({ ...s, [e]: true }))
     setAddEmailInput('')
@@ -834,17 +850,25 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             )}
             <div className="add-recipient-wrap">
               <input
-                type="text"
+                ref={addEmailInputRef}
+                type="email"
+                inputMode="email"
+                autoComplete="off"
                 className="add-recipient-input"
                 placeholder="Agregar otro correo…"
                 value={addEmailInput}
-                onChange={(e) => setAddEmailInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addExtraRecipient(addEmailInput) } }}
+                onChange={(e) => { setAddEmailInput(e.target.value); setAddRecipientMsg('') }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addExtraRecipient(addEmailInput || addEmailInputRef.current?.value) } }}
               />
-              <button type="button" className="btn btn-secondary" onClick={() => addExtraRecipient(addEmailInput)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={(ev) => { ev.preventDefault(); addExtraRecipient(addEmailInput || addEmailInputRef.current?.value) }}
+              >
                 Agregar
               </button>
             </div>
+            {addRecipientMsg && <p className="hint add-recipient-msg">{addRecipientMsg}</p>}
           </div>
           <div className="form-group">
             <label>CC (opcional)</label>
