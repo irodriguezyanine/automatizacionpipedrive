@@ -125,6 +125,18 @@ export default function DashboardPage() {
     if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
   }, [companyNames.length, activeTab])
 
+  const [refreshingActivities, setRefreshingActivities] = useState(false)
+  async function refreshActivities() {
+    setRefreshingActivities(true)
+    try {
+      const url = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
+      const res = await fetch(url, { credentials: 'include' })
+      const data = res.ok ? await res.json().catch(() => []) : []
+      if (Array.isArray(data)) setActivities(data)
+    } catch (_) {}
+    setRefreshingActivities(false)
+  }
+
   async function loadSentEmails() {
     setSentEmailsLoading(true)
     try {
@@ -370,6 +382,18 @@ export default function DashboardPage() {
             </select>
           </div>
         )}
+        <div className="company-dropdown-wrap refresh-activities-wrap">
+          <label className="company-dropdown-label">&nbsp;</label>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={refreshActivities}
+            disabled={refreshingActivities}
+            aria-label="Actualizar lista de empresas y actividades"
+          >
+            {refreshingActivities ? 'Actualizando…' : 'Actualizar lista'}
+          </button>
+        </div>
       </div>
       {activities.length === 0 ? (
         <div className="empty-state">No hay actividades pendientes.</div>

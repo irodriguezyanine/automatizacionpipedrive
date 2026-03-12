@@ -243,6 +243,10 @@ input, textarea, button, select {
   margin-bottom: 0;
 }
 
+.refresh-activities-wrap .btn {
+  white-space: nowrap;
+}
+
 .company-dropdown-wrap {
   margin-bottom: 1.5rem;
 }
