@@ -884,7 +884,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
           <div className="form-group">
             <label>CC (opcional)</label>
             <EmailTagInput value={cc} onChange={setCc} placeholder="Agregar correo CC…" />
-            <p className="hint">Cada correo como etiqueta. Puedes quitar o agregar. Por defecto: irodriguez y jdiaz.</p>
+            <p className="hint">Cada correo como etiqueta. <strong>comercial@vedisaremates.cl</strong> se agrega siempre en CC. Por defecto además: irodriguez y jdiaz.</p>
           </div>
           <div className="form-group">
             <label>CCO / BCC (opcional)</label>
