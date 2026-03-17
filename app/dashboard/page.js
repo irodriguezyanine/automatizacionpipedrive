@@ -155,7 +155,7 @@ export default function DashboardPage() {
     if (dashboardView === 'sent') loadSentEmails()
   }, [dashboardView])
 
-  async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays) {
+  async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays, attachPresentation = false) {
     if (selectedParticipants.length === 0) return
     let emailsForWarn = sentEmails
     if (emailsForWarn.length === 0) {
@@ -195,7 +195,7 @@ export default function DashboardPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ to: p.email, subject, bodyHtml: bodyForRecipient, cc: ccList, bcc: bccList }),
+        body: JSON.stringify({ to: p.email, subject, bodyHtml: bodyForRecipient, cc: ccList, bcc: bccList, attachPresentation }),
       })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -587,6 +587,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState(DEFAULT_CC)
   const [bcc, setBcc] = useState(DEFAULT_BCC)
+  const [attachPresentation, setAttachPresentation] = useState(false)
   const [followUpInDays, setFollowUpInDays] = useState(7)
   const [viewBodyMode, setViewBodyMode] = useState('preview')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
@@ -891,6 +892,18 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             <EmailTagInput value={bcc} onChange={setBcc} placeholder="Agregar correo en copia oculta…" />
             <p className="hint">Copia oculta. Mismos destinatarios en cada envío. Por defecto: jpmontero.</p>
           </div>
+          <div className="form-group checkbox-group">
+            <label htmlFor={`attach-presentation-${item.activityId}`}>
+              <input
+                type="checkbox"
+                id={`attach-presentation-${item.activityId}`}
+                checked={attachPresentation}
+                onChange={(e) => setAttachPresentation(e.target.checked)}
+              />
+              <span>Adjuntar presentación Vedisa Remates (PDF)</span>
+            </label>
+            <p className="hint">Incluye el archivo &quot;2603 Presentación VEDISA REMATES.pdf&quot; en el correo.</p>
+          </div>
           <div className="form-group">
             <label htmlFor={`follow-up-${item.activityId}`}>Programar siguiente seguimiento en</label>
             <select
@@ -907,7 +920,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
           <button
             className="btn btn-primary"
             disabled={selectedParticipants.length === 0 || sending}
-            onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays)}
+            onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays, attachPresentation)}
           >
             {sending ? 'Enviando…' : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
           </button>
