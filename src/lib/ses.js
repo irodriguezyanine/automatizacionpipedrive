@@ -8,6 +8,7 @@ import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses'
 const region = process.env.AWS_REGION || 'us-east-1'
 const fromComercial = process.env.EMAIL_FROM_COMERCIAL || 'comercial@vedisaremates.cl'
 const fromIrodriguez = process.env.EMAIL_FROM_IRODRIGUEZ || 'irodriguez@vedisaremates.cl'
+const fromDisplayName = process.env.EMAIL_FROM_DISPLAY_NAME || 'Vedisa Remates'
 const configSet = process.env.SES_CONFIGURATION_SET || null
 
 function getClient() {
@@ -39,13 +40,17 @@ export async function sendEmail({ to, subject, bodyHtml, fromPreset = 'comercial
         ? fromIrodriguez
         : fromComercial
 
+  const source = fromDisplayName
+    ? `"${fromDisplayName.replace(/"/g, '\\"')}" <${fromEmail}>`
+    : fromEmail
+
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) {
     throw new Error('Email destino inválido o vacío')
   }
 
   const client = getClient()
   const command = new SendEmailCommand({
-    Source: fromEmail,
+    Source: source,
     Destination: {
       ToAddresses: [to.trim()],
       BccAddresses: [fromEmail],
