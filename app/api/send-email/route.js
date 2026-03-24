@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { join, isAbsolute } from 'path'
 import { sendEmail as sendEmailSes } from '../../../lib/ses.js'
 import { sendEmail as sendEmailGmail } from '../../../lib/gmail.js'
 
@@ -11,6 +11,12 @@ const MANDATORY_CC_EMAIL = process.env.EMAIL_CC_COMERCIAL || 'comercial@vedisare
 /** Ruta del PDF de presentación (relativa a la raíz del proyecto o absoluta). */
 const PRESENTATION_PDF_PATH = process.env.ATTACHMENT_PRESENTATION_PATH || join('attachments', '2603 Presentación VEDISA REMATES.pdf')
 
+function sanitizePath(value) {
+  // Permite rutas en .env con comillas y/o espacios accidentales.
+  const raw = String(value || '').trim()
+  return raw.replace(/^"(.*)"$/, '$1').trim()
+}
+
 function mergeCc(cc) {
   const list = Array.isArray(cc) ? cc.filter(Boolean) : cc ? String(cc).split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean) : []
   const merged = [...new Set([...list, MANDATORY_CC_EMAIL])].filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
@@ -19,10 +25,11 @@ function mergeCc(cc) {
 
 function getPresentationAttachment() {
   const base = process.cwd()
-  const filePath = PRESENTATION_PDF_PATH.startsWith('/') ? PRESENTATION_PDF_PATH : join(base, PRESENTATION_PDF_PATH)
+  const configuredPath = sanitizePath(PRESENTATION_PDF_PATH)
+  const filePath = isAbsolute(configuredPath) ? configuredPath : join(base, configuredPath)
   if (!existsSync(filePath)) return null
   const buffer = readFileSync(filePath)
-  const filename = PRESENTATION_PDF_PATH.split(/[/\\]/).pop() || '2603 Presentación VEDISA REMATES.pdf'
+  const filename = configuredPath.split(/[/\\]/).pop() || '2603 Presentación VEDISA REMATES.pdf'
   return { filename, content: buffer }
 }
 
