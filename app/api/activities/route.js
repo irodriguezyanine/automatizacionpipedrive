@@ -1,4 +1,4 @@
-import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getDealParticipants, getPrimaryEmail } from '../../../lib/pipedrive.js'
+import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getDeal, getDealParticipants, getPrimaryEmail } from '../../../lib/pipedrive.js'
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +14,9 @@ export async function GET(request) {
   try {
     const ownerIdParam = request.nextUrl?.searchParams?.get('owner_id')
     const ownerId = ownerIdParam ? Number(ownerIdParam) : undefined
-    const { all, overdue } = await getAllActivitiesNotDone({ maxItems: 30, ownerId })
+    const configuredMax = Number(process.env.PIPEDRIVE_MAX_ITEMS || 200)
+    const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 500) : 200
+    const { all, overdue } = await getAllActivitiesNotDone({ maxItems, ownerId })
     const overdueIds = new Set(overdue.map((a) => a.id))
     const todayStr = new Date().toISOString().slice(0, 10)
     const results = []
@@ -23,6 +25,7 @@ export async function GET(request) {
     const personCache = new Map()
     const orgPersonsCache = new Map()
     const dealParticipantsCache = new Map()
+    const dealCache = new Map()
 
     async function getOrgCached(orgId) {
       if (orgId == null) return null
@@ -78,12 +81,31 @@ export async function GET(request) {
       }
     }
 
+    async function getDealCached(dealId) {
+      if (dealId == null) return null
+      const id = Number(dealId)
+      if (dealCache.has(id)) return dealCache.get(id)
+      try {
+        const deal = await getDeal(id)
+        dealCache.set(id, deal)
+        return deal
+      } catch (_) {
+        dealCache.set(id, null)
+        return null
+      }
+    }
+
     for (const activity of all) {
-      const orgId = activity.org_id
+      let orgId = activity.org_id
       const personId = activity.person_id
       let orgName = 'Su empresa'
       let primaryName = 'Estimado/a'
       const participants = []
+
+      if (!orgId && activity.deal_id) {
+        const deal = await getDealCached(activity.deal_id)
+        orgId = deal?.org_id?.value ?? deal?.org_id ?? null
+      }
 
       if (orgId) {
         const org = await getOrgCached(orgId)
