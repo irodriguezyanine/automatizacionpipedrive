@@ -4,6 +4,13 @@ import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+function formatLocalYmd(date = new Date()) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 async function mapWithConcurrency(items, concurrency, worker) {
   const out = new Array(items.length)
   let idx = 0
@@ -32,9 +39,10 @@ export async function GET(request) {
     const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 300) : 80
     const configuredConcurrency = Number(process.env.PIPEDRIVE_ENRICH_CONCURRENCY || 6)
     const enrichConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0 ? Math.min(configuredConcurrency, 12) : 6
-    const { all, overdue } = await getAllActivitiesNotDone({ maxItems, ownerId })
-    const overdueIds = new Set(overdue.map((a) => a.id))
-    const todayStr = new Date().toISOString().slice(0, 10)
+    const { all } = await getAllActivitiesNotDone({ maxItems, ownerId })
+    const todayStr = formatLocalYmd()
+    // Mostrar solo ATRASADAS: due_date estrictamente menor a hoy (no incluye "vence hoy")
+    const overdueOnly = all.filter((a) => a?.due_date && String(a.due_date).slice(0, 10) < todayStr)
     const results = []
 
     const orgCache = new Map()
@@ -111,7 +119,7 @@ export async function GET(request) {
       }
     }
 
-    const mapped = await mapWithConcurrency(all, enrichConcurrency, async (activity) => {
+    const mapped = await mapWithConcurrency(overdueOnly, enrichConcurrency, async (activity) => {
       let orgId = activity.org_id
       const personId = activity.person_id
       let orgName = 'Su empresa'
@@ -164,8 +172,8 @@ export async function GET(request) {
       })
 
       const dueDate = activity.due_date || null
-      const isOverdue = overdueIds.has(activity.id)
-      const isDueToday = dueDate && dueDate.slice(0, 10) === todayStr && !isOverdue
+      const isOverdue = !!(dueDate && dueDate.slice(0, 10) < todayStr)
+      const isDueToday = false
       return {
         activityId: activity.id,
         subject: activity.subject || 'Sin asunto',
