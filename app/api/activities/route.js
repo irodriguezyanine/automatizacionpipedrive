@@ -4,6 +4,20 @@ import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+async function mapWithConcurrency(items, concurrency, worker) {
+  const out = new Array(items.length)
+  let idx = 0
+  const size = Math.max(1, Number(concurrency) || 1)
+  const runners = Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (idx < items.length) {
+      const current = idx++
+      out[current] = await worker(items[current], current)
+    }
+  })
+  await Promise.all(runners)
+  return out
+}
+
 export async function GET(request) {
   if (!process.env.PIPEDRIVE_API_TOKEN) {
     return Response.json(
@@ -14,8 +28,10 @@ export async function GET(request) {
   try {
     const ownerIdParam = request.nextUrl?.searchParams?.get('owner_id')
     const ownerId = ownerIdParam ? Number(ownerIdParam) : undefined
-    const configuredMax = Number(process.env.PIPEDRIVE_MAX_ITEMS || 200)
-    const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 500) : 200
+    const configuredMax = Number(process.env.PIPEDRIVE_MAX_ITEMS || 80)
+    const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 300) : 80
+    const configuredConcurrency = Number(process.env.PIPEDRIVE_ENRICH_CONCURRENCY || 6)
+    const enrichConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0 ? Math.min(configuredConcurrency, 12) : 6
     const { all, overdue } = await getAllActivitiesNotDone({ maxItems, ownerId })
     const overdueIds = new Set(overdue.map((a) => a.id))
     const todayStr = new Date().toISOString().slice(0, 10)
@@ -95,7 +111,7 @@ export async function GET(request) {
       }
     }
 
-    for (const activity of all) {
+    const mapped = await mapWithConcurrency(all, enrichConcurrency, async (activity) => {
       let orgId = activity.org_id
       const personId = activity.person_id
       let orgName = 'Su empresa'
@@ -128,8 +144,10 @@ export async function GET(request) {
       if (personId) personIds.add(personId)
 
       const seen = new Set()
-      for (const pid of personIds) {
-        const person = await getPersonCached(pid)
+      const personList = await Promise.all(Array.from(personIds).map((pid) => getPersonCached(pid)))
+      for (let i = 0; i < personList.length; i++) {
+        const pid = Array.from(personIds)[i]
+        const person = personList[i]
         const email = getPrimaryEmail(person)
         if (!email || seen.has(email)) continue
         seen.add(email)
@@ -148,7 +166,7 @@ export async function GET(request) {
       const dueDate = activity.due_date || null
       const isOverdue = overdueIds.has(activity.id)
       const isDueToday = dueDate && dueDate.slice(0, 10) === todayStr && !isOverdue
-      results.push({
+      return {
         activityId: activity.id,
         subject: activity.subject || 'Sin asunto',
         type: activity.type,
@@ -160,7 +178,11 @@ export async function GET(request) {
         proposedSubject,
         proposedBodyHtml,
         participants: dedup,
-      })
+      }
+    })
+
+    for (const item of mapped) {
+      if (item) results.push(item)
     }
 
     return Response.json(results)
