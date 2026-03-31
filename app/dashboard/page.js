@@ -344,7 +344,7 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          Actividades pendientes por empresa (hasta 30, por fecha de vencimiento). Elige una plantilla o crea una nueva. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva; la lista se actualiza y reordena sola. Usa <strong>Actualizar lista</strong> para traer más desde Pipedrive.
+          Actividades pendientes por empresa (límite configurable con <code>PIPEDRIVE_MAX_ITEMS</code>, por defecto 200, por fecha de vencimiento). Elige una plantilla o crea una nueva. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva; la lista se actualiza y reordena sola. Usa <strong>Actualizar lista</strong> para volver a sincronizar desde Pipedrive.
         </p>
 
       {showNewTemplate && (
