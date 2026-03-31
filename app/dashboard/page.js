@@ -344,7 +344,7 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          Actividades pendientes por empresa (límite configurable con <code>PIPEDRIVE_MAX_ITEMS</code>, por defecto 200, por fecha de vencimiento). Elige una plantilla o crea una nueva. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva; la lista se actualiza y reordena sola. Usa <strong>Actualizar lista</strong> para volver a sincronizar desde Pipedrive.
+          Actividades <strong>atrasadas</strong> por empresa (solo vencidas en rojo; no incluye pendientes ni las que vencen hoy). Límite configurable con <code>PIPEDRIVE_MAX_ITEMS</code>. Elige una plantilla o crea una nueva. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva; la lista se actualiza y reordena sola. Usa <strong>Actualizar lista</strong> para volver a sincronizar desde Pipedrive.
         </p>
 
       {showNewTemplate && (
@@ -405,7 +405,7 @@ export default function DashboardPage() {
         </div>
       </div>
       {activities.length === 0 ? (
-        <div className="empty-state">No hay actividades pendientes.</div>
+        <div className="empty-state">No hay actividades atrasadas.</div>
       ) : (
         <>
           {companyNames.map((name, i) => (
