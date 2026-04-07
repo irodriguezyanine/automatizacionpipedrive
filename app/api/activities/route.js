@@ -122,18 +122,39 @@ export async function GET(request) {
     const mapped = await mapWithConcurrency(overdueOnly, enrichConcurrency, async (activity) => {
       let orgId = activity.org_id
       const personId = activity.person_id
-      let orgName = 'Su empresa'
+      let orgName = null
       let primaryName = 'Estimado/a'
       const participants = []
 
-      if (!orgId && activity.deal_id) {
-        const deal = await getDealCached(activity.deal_id)
-        orgId = deal?.org_id?.value ?? deal?.org_id ?? null
+      let deal = null
+      if (activity.deal_id) {
+        deal = await getDealCached(activity.deal_id)
+        if (!orgId) orgId = deal?.org_id?.value ?? deal?.org_id ?? null
       }
 
       if (orgId) {
         const org = await getOrgCached(orgId)
         if (org?.name) orgName = org.name
+      }
+
+      if (!orgName && deal?.title) orgName = String(deal.title).trim() || null
+
+      if (!orgName && personId) {
+        const person = await getPersonCached(personId)
+        if (person?.org_id) {
+          const oid = typeof person.org_id === 'object' ? person.org_id.value ?? person.org_id.id : person.org_id
+          const embeddedName = typeof person.org_id === 'object' ? person.org_id.name : null
+          if (embeddedName) orgName = embeddedName
+          else if (oid) {
+            const o = await getOrgCached(oid)
+            if (o?.name) orgName = o.name
+          }
+        }
+      }
+
+      if (!orgName) {
+        const subj = activity.subject && String(activity.subject).trim()
+        orgName = subj ? `Sin empresa · ${subj.slice(0, 80)}${subj.length > 80 ? '…' : ''}` : `Actividad #${activity.id}`
       }
 
       const personIds = new Set()

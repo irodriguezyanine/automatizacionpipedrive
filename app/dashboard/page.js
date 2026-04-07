@@ -20,6 +20,13 @@ export default function DashboardPage() {
   const [showNewTemplate, setShowNewTemplate] = useState(false)
   const [owners, setOwners] = useState([])
   const [selectedOwnerId, setSelectedOwnerId] = useState('')
+  const [standaloneItem, setStandaloneItem] = useState(null)
+  const [companyQuery, setCompanyQuery] = useState('')
+  const [companyMenuOpen, setCompanyMenuOpen] = useState(false)
+  const [remoteOrgs, setRemoteOrgs] = useState([])
+  const [remoteLoading, setRemoteLoading] = useState(false)
+  const [loadingStandalone, setLoadingStandalone] = useState(false)
+  const companyComboRef = useRef(null)
 
   const allTemplates = useMemo(() => [...templates, ...customTemplates], [templates, customTemplates])
 
@@ -62,12 +69,66 @@ export default function DashboardPage() {
     return { byCompany: map, companyNames: names }
   }, [activities])
 
+  const sortedCompanyNames = useMemo(
+    () => [...companyNames].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' })),
+    [companyNames]
+  )
+  const qActivityLower = companyQuery.trim().toLowerCase()
+  const filteredActivityCompanies = useMemo(() => {
+    if (!qActivityLower) return sortedCompanyNames
+    return sortedCompanyNames.filter((n) => n.toLowerCase().includes(qActivityLower))
+  }, [sortedCompanyNames, qActivityLower])
+
+  const remoteOrgsDeduped = useMemo(() => {
+    const set = new Set(companyNames.map((n) => n.toLowerCase()))
+    return remoteOrgs.filter((o) => o?.name && !set.has(String(o.name).toLowerCase()))
+  }, [remoteOrgs, companyNames])
+
+  function selectActivityCompany(name) {
+    const idx = companyNames.indexOf(name)
+    if (idx < 0) return
+    setStandaloneItem(null)
+    setActiveTab(idx)
+    setCompanyQuery(name)
+    setCompanyMenuOpen(false)
+  }
+
+  async function selectRemoteOrg(org) {
+    if (!org?.id) return
+    const idx = companyNames.findIndex((n) => n.toLowerCase() === String(org.name || '').toLowerCase())
+    if (idx >= 0) {
+      setStandaloneItem(null)
+      setActiveTab(idx)
+      setCompanyQuery(org.name)
+      setCompanyMenuOpen(false)
+      return
+    }
+    setLoadingStandalone(true)
+    try {
+      const res = await fetch(`/api/organization-outreach?org_id=${org.id}`, { credentials: 'include' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Error ${res.status}`)
+      setStandaloneItem(data)
+      setCompanyQuery(org.name)
+      setCompanyMenuOpen(false)
+    } catch (e) {
+      setToast({ type: 'error', message: e.message || 'No se pudo cargar la empresa' })
+    } finally {
+      setLoadingStandalone(false)
+    }
+  }
+
   useEffect(() => {
     fetch('/api/owners', { credentials: 'include' })
       .then((r) => r.ok ? r.json() : { owners: [] })
       .then((data) => setOwners(Array.isArray(data?.owners) ? data.owners : []))
       .catch(() => setOwners([]))
   }, [])
+
+  useEffect(() => {
+    setStandaloneItem(null)
+    setCompanyQuery('')
+  }, [selectedOwnerId])
 
   useEffect(() => {
     setLoading(true)
@@ -122,11 +183,39 @@ export default function DashboardPage() {
   }, [selectedOwnerId])
 
   useEffect(() => {
+    const q = companyQuery.trim()
+    if (q.length < 2) {
+      setRemoteOrgs([])
+      return
+    }
+    const timer = setTimeout(() => {
+      setRemoteLoading(true)
+      fetch(`/api/organizations?q=${encodeURIComponent(q)}`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : { organizations: [] }))
+        .then((data) => {
+          setRemoteOrgs(Array.isArray(data.organizations) ? data.organizations : [])
+        })
+        .catch(() => setRemoteOrgs([]))
+        .finally(() => setRemoteLoading(false))
+    }, 320)
+    return () => clearTimeout(timer)
+  }, [companyQuery])
+
+  useEffect(() => {
+    function onDocMouseDown(e) {
+      if (!companyComboRef.current) return
+      if (!companyComboRef.current.contains(e.target)) setCompanyMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [])
+
+  useEffect(() => {
     if (companyNames.length && activeTab >= companyNames.length) setActiveTab(0)
   }, [companyNames.length, activeTab])
 
   const [refreshingActivities, setRefreshingActivities] = useState(false)
-  async function refreshActivities() {
+  const refreshActivities = useCallback(async () => {
     setRefreshingActivities(true)
     try {
       const url = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
@@ -135,7 +224,24 @@ export default function DashboardPage() {
       if (Array.isArray(data)) setActivities(data)
     } catch (_) {}
     setRefreshingActivities(false)
-  }
+  }, [selectedOwnerId])
+
+  useEffect(() => {
+    if (dashboardView !== 'send') return
+    const raw = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_ACTIVITIES_POLL_SEC : undefined
+    const sec = raw != null && String(raw).trim() !== '' ? Number(raw) : 60
+    if (!Number.isFinite(sec) || sec <= 0) return
+    const id = setInterval(() => {
+      refreshActivities()
+    }, sec * 1000)
+    return () => clearInterval(id)
+  }, [dashboardView, refreshActivities])
+
+  useEffect(() => {
+    if (loading || standaloneItem) return
+    if (!companyNames.length) return
+    setCompanyQuery((q) => (q === '' ? (companyNames[activeTab] || companyNames[0]) : q))
+  }, [loading, companyNames, activeTab, standaloneItem])
 
   async function loadSentEmails() {
     setSentEmailsLoading(true)
@@ -179,7 +285,8 @@ export default function DashboardPage() {
         : `Ya se les envió correo a: ${names}. ¿Desea volver a enviar?`
       if (!window.confirm(msg)) return
     }
-    setSending((s) => ({ ...s, [item.activityId]: true }))
+    const sendKey = item.activityId != null ? item.activityId : `standalone-${item.orgId ?? 'x'}`
+    setSending((s) => ({ ...s, [sendKey]: true }))
     const subject = item.editedSubject ?? item.proposedSubject
     const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
     const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? String(cc).split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : [])
@@ -208,6 +315,11 @@ export default function DashboardPage() {
       }
     }
     if (ok) {
+      if (item.activityId == null) {
+        setToast({ type: 'success', message: 'Correo(s) enviado(s). (No hay actividad vinculada en Pipedrive.)' })
+        setSending((s) => ({ ...s, [sendKey]: false }))
+        return
+      }
       const sentToEmails = selectedParticipants.map((p) => p.email)
       const res = await fetch('/api/complete-activity', {
         method: 'POST',
@@ -245,15 +357,23 @@ export default function DashboardPage() {
       const detail = sendErrors.length > 0 ? sendErrors[0] : 'Revisa la consola o variables de entorno (SES).'
       setToast({ type: 'error', message: `Error al enviar algún correo. ${detail}` })
     }
-    setSending((s) => ({ ...s, [item.activityId]: false }))
+    setSending((s) => ({ ...s, [sendKey]: false }))
   }
 
   const setEditedSubject = useCallback((activityId, value) => {
+    if (activityId == null) {
+      setStandaloneItem((prev) => (prev ? { ...prev, editedSubject: value } : prev))
+      return
+    }
     setActivities((prev) =>
       prev.map((a) => (a.activityId === activityId ? { ...a, editedSubject: value } : a))
     )
   }, [])
   const setEditedBodyHtml = useCallback((activityId, value) => {
+    if (activityId == null) {
+      setStandaloneItem((prev) => (prev ? { ...prev, editedBodyHtml: value } : prev))
+      return
+    }
     setActivities((prev) =>
       prev.map((a) => (a.activityId === activityId ? { ...a, editedBodyHtml: value } : a))
     )
@@ -344,7 +464,7 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          Actividades <strong>atrasadas</strong> por empresa (solo vencidas en rojo; no incluye pendientes ni las que vencen hoy). Límite configurable con <code>PIPEDRIVE_MAX_ITEMS</code>. Elige una plantilla o crea una nueva. Al enviar, la actividad se marca <strong>Completada</strong> y se programa una nueva; la lista se actualiza y reordena sola. Usa <strong>Actualizar lista</strong> para volver a sincronizar desde Pipedrive.
+          <strong>Actividades atrasadas</strong> por empresa (solo vencidas; no incluye pendientes ni las que vencen hoy). Límite con <code>PIPEDRIVE_MAX_ITEMS</code>. En el buscador puedes elegir una empresa <strong>con</strong> actividad atrasada o buscar <strong>cualquier</strong> organización en Pipedrive (escribe 2+ letras) y enviar correo aunque no tenga tarea pendiente. La lista de actividades se <strong>actualiza sola</strong> cada minuto (configurable con <code>NEXT_PUBLIC_ACTIVITIES_POLL_SEC</code> en segundos). <strong>Actualizar lista</strong> fuerza una sincronización ya.
         </p>
 
       {showNewTemplate && (
@@ -372,25 +492,72 @@ export default function DashboardPage() {
             ))}
           </select>
         </div>
-        {activities.length > 0 && (
-          <div className="company-dropdown-wrap">
-            <label htmlFor="company-select" className="company-dropdown-label">Empresa / negocio</label>
-            <select
-              id="company-select"
-              className="company-dropdown"
-              value={activeTab}
-              onChange={(e) => setActiveTab(Number(e.target.value))}
-              aria-label="Seleccionar empresa"
-            >
-              {companyNames.map((name, i) => (
-                <option key={name} value={i}>
-                  {name}
-                  {byCompany.get(name).length > 1 ? ` (${byCompany.get(name).length} actividades)` : ''}
-                </option>
-              ))}
-            </select>
+        <div className="company-dropdown-wrap company-combobox-wrap" ref={companyComboRef}>
+          <label htmlFor="company-combo-input" className="company-dropdown-label">Empresa / negocio</label>
+          <div className="company-combobox">
+            <input
+              id="company-combo-input"
+              className="company-combobox-input"
+              type="search"
+              autoComplete="off"
+              placeholder="Filtra empresas con atraso o escribe 2+ letras para buscar en Pipedrive…"
+              value={companyQuery}
+              onChange={(e) => {
+                setCompanyQuery(e.target.value)
+                setCompanyMenuOpen(true)
+              }}
+              onFocus={() => setCompanyMenuOpen(true)}
+              aria-expanded={companyMenuOpen}
+              aria-controls="company-combo-list"
+              aria-autocomplete="list"
+            />
+            {companyMenuOpen && (
+              <div id="company-combo-list" className="company-combobox-list" role="listbox">
+                {filteredActivityCompanies.length > 0 && (
+                  <div className="company-combobox-section">
+                    <div className="company-combobox-section-title">Con actividad atrasada</div>
+                    {filteredActivityCompanies.map((name) => (
+                      <button
+                        key={`act-${name}`}
+                        type="button"
+                        role="option"
+                        className={`company-combobox-option ${!standaloneItem && companyNames[activeTab] === name ? 'is-active' : ''}`}
+                        onClick={() => selectActivityCompany(name)}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {companyQuery.trim().length >= 2 && (
+                  <div className="company-combobox-section">
+                    <div className="company-combobox-section-title">
+                      {remoteLoading ? 'Buscando en Pipedrive…' : 'Más empresas en Pipedrive'}
+                    </div>
+                    {!remoteLoading && remoteOrgsDeduped.length === 0 && (
+                      <div className="company-combobox-empty">Sin coincidencias adicionales (o ya están arriba).</div>
+                    )}
+                    {remoteOrgsDeduped.map((o) => (
+                      <button
+                        key={`org-${o.id}`}
+                        type="button"
+                        role="option"
+                        className="company-combobox-option"
+                        onClick={() => selectRemoteOrg(o)}
+                      >
+                        {o.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {companyQuery.trim().length < 2 && filteredActivityCompanies.length === 0 && (
+                  <div className="company-combobox-hint">Escribe al menos 2 letras para buscar cualquier empresa en Pipedrive.</div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+          {loadingStandalone && <p className="hint company-combobox-loading">Cargando contactos de la empresa…</p>}
+        </div>
         <div className="company-dropdown-wrap refresh-activities-wrap">
           <label className="company-dropdown-label">&nbsp;</label>
           <button
@@ -404,8 +571,38 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
-      {activities.length === 0 ? (
-        <div className="empty-state">No hay actividades atrasadas.</div>
+      {standaloneItem && (
+        <div className="standalone-toolbar">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setStandaloneItem(null)
+              const n = companyNames[activeTab]
+              if (n) setCompanyQuery(n)
+            }}
+          >
+            Volver a actividades atrasadas
+          </button>
+        </div>
+      )}
+      {standaloneItem ? (
+        <ActivityCard
+          key={`standalone-${standaloneItem.orgId}`}
+          item={standaloneItem}
+          onSend={handleSend}
+          sending={sending[`standalone-${standaloneItem.orgId}`]}
+          setEditedSubject={setEditedSubject}
+          setEditedBodyHtml={setEditedBodyHtml}
+          allTemplates={allTemplates}
+          signatureHtml={signatureHtml}
+          onRequestNewTemplate={() => setShowNewTemplate(true)}
+          onSaveCustomTemplate={saveCustomTemplate}
+        />
+      ) : activities.length === 0 ? (
+        <div className="empty-state">
+          No hay actividades atrasadas con el filtro actual. Usa el buscador de arriba (2+ letras) para elegir cualquier empresa de Pipedrive y enviar correo.
+        </div>
       ) : (
         <>
           {companyNames.map((name, i) => (
@@ -584,6 +781,8 @@ function EmailTagInput({ value, onChange, placeholder }) {
 const MINIMAL_NEW_TEMPLATE_BODY = '<p>Hola {{nombre}},</p>\n\n'
 
 const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml, onRequestNewTemplate, onSaveCustomTemplate }) {
+  const isStandalone = item.activityId == null
+  const cardKey = item.activityId != null ? String(item.activityId) : `org-${item.orgId ?? 'x'}`
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState(DEFAULT_CC)
   const [bcc, setBcc] = useState(DEFAULT_BCC)
@@ -643,7 +842,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
     if (templateId === '__new__') {
       setSelectedTemplateId('')
       const minimalBody = MINIMAL_NEW_TEMPLATE_BODY + (signatureHtml || '')
-      setEditedBodyHtml(item.activityId, minimalBody)
+      setEditedBodyHtml(item.activityId ?? null, minimalBody)
       setViewBodyMode('preview')
       if (previewRef.current) previewRef.current.innerHTML = minimalBody || '<p><em>Sin contenido</em></p>'
       setIsCreatingNewTemplate(true)
@@ -657,7 +856,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
     // Dejar la plantilla con placeholders {{nombre}}, {{empresa}}, {{saludo}} para que al enviar
     // se reemplace el nombre por cada destinatario (no rellenar aquí con el primer participante).
     const fullBody = t.body + '\n' + signatureHtml
-    setEditedBodyHtml(item.activityId, fullBody)
+    setEditedBodyHtml(item.activityId ?? null, fullBody)
     if (viewBodyMode === 'preview' && previewRef.current) {
       previewRef.current.innerHTML = fullBody || '<p><em>Sin contenido</em></p>'
     }
@@ -680,7 +879,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   }, [viewBodyMode])
 
   function syncPreviewToState() {
-    if (previewRef.current) setEditedBodyHtml(item.activityId, previewRef.current.innerHTML)
+    if (previewRef.current) setEditedBodyHtml(item.activityId ?? null, previewRef.current.innerHTML)
   }
 
   function execFormat(cmd, value) {
@@ -690,13 +889,22 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   }
 
   return (
-    <div className={`card ${item.isOverdue ? 'card-overdue' : item.isDueToday ? 'card-due-today' : ''}`}>
+    <div className={`card ${!isStandalone && item.isOverdue ? 'card-overdue' : !isStandalone && item.isDueToday ? 'card-due-today' : ''}`}>
       <div className="activity-meta">
-        <span className={item.isOverdue ? 'badge overdue' : item.isDueToday ? 'badge due-today' : 'badge'}>
-          {item.isOverdue ? 'Atrasada' : item.isDueToday ? 'Vence hoy' : 'Pendiente'}
-        </span>
-        <span>Actividad: {item.subject}</span>
-        {item.dueDate && <span>Vence: {item.dueDate}</span>}
+        {isStandalone ? (
+          <>
+            <span className="badge badge-standalone">Búsqueda libre</span>
+            <span>Envío sin actividad vinculada (no se completa tarea en Pipedrive)</span>
+          </>
+        ) : (
+          <>
+            <span className={item.isOverdue ? 'badge overdue' : item.isDueToday ? 'badge due-today' : 'badge'}>
+              {item.isOverdue ? 'Atrasada' : item.isDueToday ? 'Vence hoy' : 'Pendiente'}
+            </span>
+            <span>Actividad: {item.subject}</span>
+            {item.dueDate && <span>Vence: {item.dueDate}</span>}
+          </>
+        )}
       </div>
       <h3>{item.orgName}</h3>
       <div className="card-content-grid">
@@ -707,7 +915,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
               <input
                 type="text"
                 value={subject}
-                onChange={(e) => setEditedSubject(item.activityId, e.target.value)}
+                onChange={(e) => setEditedSubject(item.activityId ?? null, e.target.value)}
                 className="input-full-width"
               />
             </div>
@@ -729,9 +937,9 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             </div>
           </div>
           <div className="form-group form-group-template">
-            <label htmlFor={`template-${item.activityId}`}>Plantilla</label>
+            <label htmlFor={`template-${cardKey}`}>Plantilla</label>
             <select
-                id={`template-${item.activityId}`}
+                id={`template-${cardKey}`}
                 className="template-select"
                 value={selectedTemplateId}
                 onChange={(e) => applyTemplate(e.target.value)}
@@ -745,10 +953,10 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             <p className="hint">Al elegir una plantilla se reemplaza el cuerpo del correo. Usa <code>{'{{nombre}}'}</code> para el nombre (se cambiará por cada destinatario al enviar), <code>{'{{empresa}}'}</code> y <code>{'{{saludo}}'}</code>. Puedes editarlo después o crear una nueva.</p>
             {isCreatingNewTemplate && (
               <div className="new-template-inline">
-                <label htmlFor={`new-template-name-${item.activityId}`}>Nombre de la plantilla</label>
+                <label htmlFor={`new-template-name-${cardKey}`}>Nombre de la plantilla</label>
                 <div className="new-template-inline-row">
                   <input
-                    id={`new-template-name-${item.activityId}`}
+                    id={`new-template-name-${cardKey}`}
                     type="text"
                     value={newTemplateName}
                     onChange={(e) => setNewTemplateName(e.target.value)}
@@ -768,7 +976,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             {viewBodyMode === 'code' ? (
               <textarea
                 value={bodyHtml}
-                onChange={(e) => setEditedBodyHtml(item.activityId, e.target.value)}
+                onChange={(e) => setEditedBodyHtml(item.activityId ?? null, e.target.value)}
                 className="textarea-full-width"
               />
             ) : (
@@ -893,10 +1101,10 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             <p className="hint">Copia oculta. Mismos destinatarios en cada envío. Por defecto: jpmontero.</p>
           </div>
           <div className="form-group checkbox-group">
-            <label htmlFor={`attach-presentation-${item.activityId}`}>
+            <label htmlFor={`attach-presentation-${cardKey}`}>
               <input
                 type="checkbox"
-                id={`attach-presentation-${item.activityId}`}
+                id={`attach-presentation-${cardKey}`}
                 checked={attachPresentation}
                 onChange={(e) => setAttachPresentation(e.target.checked)}
               />
@@ -904,25 +1112,31 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             </label>
             <p className="hint">Incluye el archivo &quot;2603 Presentación VEDISA REMATES.pdf&quot; en el correo.</p>
           </div>
-          <div className="form-group">
-            <label htmlFor={`follow-up-${item.activityId}`}>Programar siguiente seguimiento en</label>
-            <select
-              id={`follow-up-${item.activityId}`}
-              value={followUpInDays}
-              onChange={(e) => setFollowUpInDays(Number(e.target.value))}
-              className="follow-up-select"
-            >
-              {FOLLOW_UP_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          {!isStandalone && (
+            <div className="form-group">
+              <label htmlFor={`follow-up-${cardKey}`}>Programar siguiente seguimiento en</label>
+              <select
+                id={`follow-up-${cardKey}`}
+                value={followUpInDays}
+                onChange={(e) => setFollowUpInDays(Number(e.target.value))}
+                className="follow-up-select"
+              >
+                {FOLLOW_UP_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             className="btn btn-primary"
             disabled={selectedParticipants.length === 0 || sending}
             onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays, attachPresentation)}
           >
-            {sending ? 'Enviando…' : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
+            {sending
+              ? 'Enviando…'
+              : isStandalone
+                ? `Enviar a ${selectedParticipants.length} destinatario(s)`
+                : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
           </button>
         </div>
       </div>

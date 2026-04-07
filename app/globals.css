@@ -287,6 +287,114 @@ input, textarea, button, select {
   box-shadow: 0 0 0 3px var(--vedisa-azul-muted);
 }
 
+.company-combobox-wrap {
+  position: relative;
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: 480px;
+}
+
+.company-combobox {
+  position: relative;
+}
+
+.company-combobox-input {
+  width: 100%;
+  max-width: 480px;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius);
+  background: var(--vedisa-card);
+  font-size: 0.9375rem;
+  color: var(--neutral-800);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.company-combobox-input:hover {
+  border-color: var(--neutral-300);
+}
+
+.company-combobox-input:focus {
+  outline: none;
+  border-color: var(--vedisa-azul);
+  box-shadow: 0 0 0 3px var(--vedisa-azul-muted);
+}
+
+.company-combobox-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  max-height: min(60vh, 320px);
+  overflow-y: auto;
+  background: var(--vedisa-card);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+
+.company-combobox-section {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--neutral-100);
+}
+
+.company-combobox-section:last-child {
+  border-bottom: none;
+}
+
+.company-combobox-section-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--neutral-500);
+  padding: 0.35rem 0.75rem 0.25rem;
+}
+
+.company-combobox-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  font-size: 0.9375rem;
+  color: var(--neutral-800);
+  cursor: pointer;
+}
+
+.company-combobox-option:hover,
+.company-combobox-option:focus {
+  background: var(--neutral-50);
+  outline: none;
+}
+
+.company-combobox-option.is-active {
+  background: #e0ecff;
+  font-weight: 500;
+}
+
+.company-combobox-empty,
+.company-combobox-hint {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--neutral-500);
+}
+
+.company-combobox-loading {
+  margin-top: 0.35rem;
+}
+
+.standalone-toolbar {
+  margin-bottom: 1rem;
+}
+
+.badge-standalone {
+  background: var(--neutral-600);
+  color: #fff;
+}
+
 .tab-panel {
   display: none;
   padding: 0.5rem 0 2rem 0;
