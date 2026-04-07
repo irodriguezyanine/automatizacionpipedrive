@@ -1,4 +1,15 @@
-import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getDeal, getDealParticipants, getPrimaryEmail, toId } from '../../../lib/pipedrive.js'
+import {
+  getAllActivitiesNotDone,
+  getOrganization,
+  getPerson,
+  getPersonsByOrg,
+  getDeal,
+  getDealParticipants,
+  getPrimaryEmail,
+  getEmailFromDealParticipantRow,
+  getNameFromDealParticipantRow,
+  toId,
+} from '../../../lib/pipedrive.js'
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
@@ -120,8 +131,8 @@ export async function GET(request) {
     }
 
     const mapped = await mapWithConcurrency(overdueOnly, enrichConcurrency, async (activity) => {
-      let orgId = activity.org_id
-      const personId = activity.person_id
+      let orgId = toId(activity.org_id) ?? toId(activity.org?.id)
+      const primaryPersonId = toId(activity.person_id) ?? toId(activity.person?.id)
       let orgName = null
       let primaryName = 'Estimado/a'
       const participants = []
@@ -129,7 +140,7 @@ export async function GET(request) {
       let deal = null
       if (activity.deal_id) {
         deal = await getDealCached(activity.deal_id)
-        if (!orgId) orgId = deal?.org_id?.value ?? deal?.org_id ?? null
+        if (!orgId) orgId = toId(deal?.org_id) ?? toId(deal?.org?.id)
       }
 
       if (orgId) {
@@ -139,8 +150,8 @@ export async function GET(request) {
 
       if (!orgName && deal?.title) orgName = String(deal.title).trim() || null
 
-      if (!orgName && personId) {
-        const person = await getPersonCached(personId)
+      if (!orgName && primaryPersonId) {
+        const person = await getPersonCached(primaryPersonId)
         if (person?.org_id) {
           const oid = typeof person.org_id === 'object' ? person.org_id.value ?? person.org_id.id : person.org_id
           const embeddedName = typeof person.org_id === 'object' ? person.org_id.name : null
@@ -159,6 +170,8 @@ export async function GET(request) {
 
       const personIds = new Set()
 
+      /** Emails/nombres que vienen en la lista de participantes del deal (a veces no repetidos en GET persons/{id}). */
+      const dealRowByPersonId = new Map()
       if (orgId) {
         const orgPersons = await getPersonsByOrgCached(orgId)
         for (const person of orgPersons) personIds.add(person.id)
@@ -169,20 +182,30 @@ export async function GET(request) {
           // person_id en Pipedrive suele ser objeto { value, name, email, ... }; p.id es el id del *participante*, no de la persona.
           const pid = toId(p.person_id) ?? toId(p.person?.id) ?? toId(p.person)
           if (pid != null) personIds.add(pid)
+          if (pid != null) {
+            const embEmail = getEmailFromDealParticipantRow(p)
+            const embName = getNameFromDealParticipantRow(p)
+            const prev = dealRowByPersonId.get(pid)
+            dealRowByPersonId.set(pid, {
+              email: embEmail || prev?.email || null,
+              name: embName || prev?.name || null,
+            })
+          }
         }
       }
-      if (personId) personIds.add(personId)
+      if (primaryPersonId != null) personIds.add(primaryPersonId)
 
       const seen = new Set()
       const personList = await Promise.all(Array.from(personIds).map((pid) => getPersonCached(pid)))
       for (let i = 0; i < personList.length; i++) {
         const pid = Array.from(personIds)[i]
         const person = personList[i]
-        const email = getPrimaryEmail(person)
+        const row = dealRowByPersonId.get(pid)
+        const email = getPrimaryEmail(person) || row?.email || null
         if (!email || seen.has(email)) continue
         seen.add(email)
-        const name = person?.name || email
-        if (pid === personId) primaryName = name
+        const name = (person?.name && String(person.name).trim()) || row?.name || email
+        if (pid === primaryPersonId) primaryName = name
         participants.push({ personId: pid, name, email })
       }
 
