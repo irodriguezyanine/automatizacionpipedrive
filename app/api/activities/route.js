@@ -1,4 +1,4 @@
-import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getDeal, getDealParticipants, getPrimaryEmail } from '../../../lib/pipedrive.js'
+import { getAllActivitiesNotDone, getOrganization, getPerson, getPersonsByOrg, getDeal, getDealParticipants, getPrimaryEmail, toId } from '../../../lib/pipedrive.js'
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
@@ -166,8 +166,9 @@ export async function GET(request) {
       if (activity.deal_id) {
         const dealParts = await getDealParticipantsCached(activity.deal_id)
         for (const p of dealParts) {
-          const pid = p.person_id ?? p.person?.value ?? p.id
-          if (pid != null) personIds.add(Number(pid))
+          // person_id en Pipedrive suele ser objeto { value, name, email, ... }; p.id es el id del *participante*, no de la persona.
+          const pid = toId(p.person_id) ?? toId(p.person?.id) ?? toId(p.person)
+          if (pid != null) personIds.add(pid)
         }
       }
       if (personId) personIds.add(personId)
