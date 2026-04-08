@@ -82,6 +82,13 @@ export default function DashboardPage() {
     return sortedCompanyNames.filter((n) => n.toLowerCase().includes(qActivityLower))
   }, [sortedCompanyNames, qActivityLower])
 
+  /** Búsqueda en todo Pipedrive solo si no hay ninguna empresa *con actividad abierta* que coincida (evita quitar espacio a esa lista). */
+  const showRemotePipedriveSection = useMemo(() => {
+    const q = companyQuery.trim()
+    if (q.length < REMOTE_ORG_SEARCH_MIN) return false
+    return filteredActivityCompanies.length === 0
+  }, [companyQuery, filteredActivityCompanies])
+
   const remoteOrgsDeduped = useMemo(() => {
     const set = new Set(companyNames.map((n) => n.toLowerCase()))
     return remoteOrgs.filter((o) => o?.name && !set.has(String(o.name).toLowerCase()))
@@ -187,7 +194,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const q = companyQuery.trim()
+    const qLower = q.toLowerCase()
     if (q.length < REMOTE_ORG_SEARCH_MIN) {
+      setRemoteOrgs([])
+      setRemoteLoading(false)
+      return
+    }
+    const localFiltered = qLower
+      ? sortedCompanyNames.filter((n) => n.toLowerCase().includes(qLower))
+      : sortedCompanyNames
+    if (localFiltered.length > 0) {
       setRemoteOrgs([])
       setRemoteLoading(false)
       return
@@ -203,7 +219,7 @@ export default function DashboardPage() {
         .finally(() => setRemoteLoading(false))
     }, 320)
     return () => clearTimeout(timer)
-  }, [companyQuery])
+  }, [companyQuery, sortedCompanyNames])
 
   useEffect(() => {
     function onDocMouseDown(e) {
@@ -467,9 +483,6 @@ export default function DashboardPage() {
         ) : (
           <>
         <h2 className="page-title">Enviar correos</h2>
-        <p className="dash-intro">
-          <strong>Actividades abiertas</strong> por empresa: atrasadas, las que vencen hoy y pendientes (futuras o sin fecha). Orden: vencimiento más antiguo primero. Límite con <code>PIPEDRIVE_MAX_ITEMS</code>. En el buscador puedes elegir una empresa <strong>con</strong> alguna de estas actividades o buscar <strong>cualquier</strong> organización en Pipedrive (escribe al menos {REMOTE_ORG_SEARCH_MIN} letras; no se muestran listas genéricas) y enviar correo aunque no tenga tarea en esta lista. La lista se <strong>actualiza sola</strong> cada minuto (configurable con <code>NEXT_PUBLIC_ACTIVITIES_POLL_SEC</code> en segundos). <strong>Actualizar lista</strong> fuerza una sincronización ya.
-        </p>
 
       {showNewTemplate && (
         <NewTemplateForm onSave={saveCustomTemplate} onCancel={() => setShowNewTemplate(false)} />
@@ -504,7 +517,7 @@ export default function DashboardPage() {
               className="company-combobox-input"
               type="search"
               autoComplete="off"
-              placeholder={`Filtra empresas con atraso o escribe ${REMOTE_ORG_SEARCH_MIN}+ letras para buscar en Pipedrive…`}
+              placeholder="Buscar empresa con actividad abierta… (si no aparece, escribe 4+ letras para buscar en Pipedrive)"
               value={companyQuery}
               onChange={(e) => {
                 setCompanyQuery(e.target.value)
@@ -533,7 +546,7 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
-                {companyQuery.trim().length >= REMOTE_ORG_SEARCH_MIN && (
+                {showRemotePipedriveSection && (
                   <div className="company-combobox-section">
                     <div className="company-combobox-section-title">
                       {remoteLoading ? 'Buscando en Pipedrive…' : 'Más empresas en Pipedrive'}
