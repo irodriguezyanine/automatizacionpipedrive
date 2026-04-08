@@ -52,8 +52,8 @@ export async function GET(request) {
     const enrichConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0 ? Math.min(configuredConcurrency, 12) : 6
     const { all } = await getAllActivitiesNotDone({ maxItems, ownerId })
     const todayStr = formatLocalYmd()
-    // Mostrar solo ATRASADAS: due_date estrictamente menor a hoy (no incluye "vence hoy")
-    const overdueOnly = all.filter((a) => a?.due_date && String(a.due_date).slice(0, 10) < todayStr)
+    /** Todas las no completadas: atrasadas, vencen hoy y pendientes (futuro o sin fecha). */
+    const toEnrich = all
     const results = []
 
     const orgCache = new Map()
@@ -130,7 +130,7 @@ export async function GET(request) {
       }
     }
 
-    const mapped = await mapWithConcurrency(overdueOnly, enrichConcurrency, async (activity) => {
+    const mapped = await mapWithConcurrency(toEnrich, enrichConcurrency, async (activity) => {
       let orgId = toId(activity.org_id) ?? toId(activity.org?.id)
       const primaryPersonId = toId(activity.person_id) ?? toId(activity.person?.id)
       let orgName = null
@@ -217,8 +217,9 @@ export async function GET(request) {
       })
 
       const dueDate = activity.due_date || null
-      const isOverdue = !!(dueDate && dueDate.slice(0, 10) < todayStr)
-      const isDueToday = false
+      const duePart = dueDate ? String(dueDate).slice(0, 10) : ''
+      const isOverdue = !!(duePart && duePart < todayStr)
+      const isDueToday = !!(duePart && duePart === todayStr)
       return {
         activityId: activity.id,
         subject: activity.subject || 'Sin asunto',
@@ -237,6 +238,15 @@ export async function GET(request) {
     for (const item of mapped) {
       if (item) results.push(item)
     }
+
+    /** Más antiguas primero (fecha de vencimiento ascendente); sin fecha al final. */
+    results.sort((a, b) => {
+      const ka = a.dueDate ? String(a.dueDate).slice(0, 10) : '9999-12-31'
+      const kb = b.dueDate ? String(b.dueDate).slice(0, 10) : '9999-12-31'
+      const c = ka.localeCompare(kb)
+      if (c !== 0) return c
+      return (Number(a.activityId) || 0) - (Number(b.activityId) || 0)
+    })
 
     return Response.json(results)
   } catch (err) {

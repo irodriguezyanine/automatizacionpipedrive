@@ -468,7 +468,7 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          <strong>Actividades atrasadas</strong> por empresa (solo vencidas; no incluye pendientes ni las que vencen hoy). Límite con <code>PIPEDRIVE_MAX_ITEMS</code>. En el buscador puedes elegir una empresa <strong>con</strong> actividad atrasada o buscar <strong>cualquier</strong> organización en Pipedrive (escribe al menos {REMOTE_ORG_SEARCH_MIN} letras; no se muestran listas genéricas) y enviar correo aunque no tenga tarea pendiente. La lista de actividades se <strong>actualiza sola</strong> cada minuto (configurable con <code>NEXT_PUBLIC_ACTIVITIES_POLL_SEC</code> en segundos). <strong>Actualizar lista</strong> fuerza una sincronización ya.
+          <strong>Actividades abiertas</strong> por empresa: atrasadas, las que vencen hoy y pendientes (futuras o sin fecha). Orden: vencimiento más antiguo primero. Límite con <code>PIPEDRIVE_MAX_ITEMS</code>. En el buscador puedes elegir una empresa <strong>con</strong> alguna de estas actividades o buscar <strong>cualquier</strong> organización en Pipedrive (escribe al menos {REMOTE_ORG_SEARCH_MIN} letras; no se muestran listas genéricas) y enviar correo aunque no tenga tarea en esta lista. La lista se <strong>actualiza sola</strong> cada minuto (configurable con <code>NEXT_PUBLIC_ACTIVITIES_POLL_SEC</code> en segundos). <strong>Actualizar lista</strong> fuerza una sincronización ya.
         </p>
 
       {showNewTemplate && (
@@ -519,7 +519,7 @@ export default function DashboardPage() {
               <div id="company-combo-list" className="company-combobox-list" role="listbox">
                 {filteredActivityCompanies.length > 0 && (
                   <div className="company-combobox-section">
-                    <div className="company-combobox-section-title">Con actividad atrasada</div>
+                    <div className="company-combobox-section-title">Con actividad abierta</div>
                     {filteredActivityCompanies.map((name) => (
                       <button
                         key={`act-${name}`}
@@ -588,7 +588,7 @@ export default function DashboardPage() {
               if (n) setCompanyQuery(n)
             }}
           >
-            Volver a actividades atrasadas
+            Volver a la lista de actividades
           </button>
         </div>
       )}
@@ -607,7 +607,7 @@ export default function DashboardPage() {
         />
       ) : activities.length === 0 ? (
         <div className="empty-state">
-          {`No hay actividades atrasadas con el filtro actual. Usa el buscador de arriba (${REMOTE_ORG_SEARCH_MIN}+ letras) para elegir cualquier empresa de Pipedrive y enviar correo.`}
+          {`No hay actividades abiertas con el filtro actual. Usa el buscador de arriba (${REMOTE_ORG_SEARCH_MIN}+ letras) para elegir cualquier empresa de Pipedrive y enviar correo.`}
         </div>
       ) : (
         <>
