@@ -12,8 +12,9 @@ function stripHtml(html) {
   if (!html || typeof html !== 'string') return ''
   let t = html
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr|table|thead|tbody)>/gi, '\n')
     .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/(td|th)>/gi, ' \t')
     .replace(/<\/blockquote>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
@@ -21,11 +22,20 @@ function stripHtml(html) {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-  t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+  // URLs pegadas al texto (firmas en un solo bloque HTML)
+  t = t.replace(/([^\s\n])(https?:\/\/)/gi, '$1\n$2')
+  t = t.replace(/([^\s\n])(www\.)/gi, '$1\n$2')
+  t = t.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ')
+  t = t.replace(/\n{3,}/g, '\n\n')
   return t.trim()
 }
 
-const NOTE_LINE = '────────────────────────────────────────'
+/** Texto plano solo ASCII: Pipedrive deforma líneas largas con Unicode (─) como muchos "_". */
+function formatSesId(raw) {
+  return String(raw || '')
+    .replace(/[<>]/g, '')
+    .trim()
+}
 
 const DEFAULT_FOLLOW_UP_DAYS = 7
 
@@ -42,21 +52,22 @@ export async function POST(req) {
     }
 
     const noteParts = []
-    noteParts.push('Completada desde panel Vedisa · correo enviado.\n\n')
-    noteParts.push(`${NOTE_LINE}\nASUNTO\n${NOTE_LINE}\n\n`)
+    noteParts.push('Completada desde panel Vedisa. Correo enviado.\n\n')
+    noteParts.push('>> Asunto\n')
     noteParts.push(`${(subject || '—').trim()}\n\n`)
     if (Array.isArray(sentTo) && sentTo.length) {
-      noteParts.push(`${NOTE_LINE}\nDESTINATARIOS\n${NOTE_LINE}\n\n`)
+      noteParts.push('>> Destinatarios\n')
       noteParts.push(sentTo.map((e) => `• ${String(e).trim()}`).join('\n'))
       noteParts.push('\n\n')
     }
     if (Array.isArray(messageIds) && messageIds.length) {
-      noteParts.push(`${NOTE_LINE}\nMESSAGE IDS (SES)\n${NOTE_LINE}\n\n`)
-      noteParts.push(`${messageIds.join(', ')}\n\n`)
+      noteParts.push('>> IDs SES (Message-ID)\n')
+      noteParts.push(messageIds.map((id) => `• ${formatSesId(id)}`).join('\n'))
+      noteParts.push('\n\n')
     }
     if (bodyHtml) {
       const bodyText = stripHtml(bodyHtml)
-      noteParts.push(`${NOTE_LINE}\nCUERPO DEL CORREO (texto plano)\n${NOTE_LINE}\n\n`)
+      noteParts.push('>> Cuerpo del mensaje (texto plano)\n\n')
       noteParts.push(bodyText)
     }
     const note = noteParts.join('').trim()

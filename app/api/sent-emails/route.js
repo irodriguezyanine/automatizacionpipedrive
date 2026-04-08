@@ -7,11 +7,44 @@ const PANEL_MARKER = 'Completada desde panel'
 /** Formato antiguo (una línea) */
 const RE_ASUNTO_LEGACY = /Asunto:\s*([^\n]+)/i
 const RE_ENVIADO_LEGACY = /Enviado a:\s*([^\n]+)/i
-/** Formato con bloques (nota legible en Pipedrive) */
+/** Formato con líneas Unicode (notas antiguas; Pipedrive las deformaba) */
 const RE_BLOCK_ASUNTO = /─+\s*\nASUNTO\s*\n─+\s*\n+([\s\S]+?)(?=\n\s*─+\s*\n(?:DESTINATARIOS|MESSAGE|CUERPO))/i
 const RE_BLOCK_DEST = /─+\s*\nDESTINATARIOS\s*\n─+\s*\n+([\s\S]+?)(?=\n\s*─+\s*\n(?:MESSAGE|CUERPO)|$)/i
 const RE_BLOCK_MSGIDS = /─+\s*\nMESSAGE IDS \(SES\)\s*\n─+\s*\n+([\s\S]+?)(?=\n\s*─+\s*\nCUERPO|$)/i
 const RE_MESSAGE_IDS_LEGACY = /MessageIds?\s*\(SES\):\s*(.+?)(?:\n|$)/i
+
+/** Formato actual: secciones con ">> Título" (solo ASCII). */
+function parseNoteGtSections(note) {
+  if (!note.includes('>>')) return null
+  const parts = note.split(/\n(?=>>\s)/)
+  let subject = ''
+  const sentTo = []
+  const messageIds = []
+  for (const part of parts) {
+    const t = part.trimStart()
+    if (!t.startsWith('>>')) continue
+    const afterGt = t.slice(2).trimStart()
+    const nl = afterGt.search(/\r?\n/)
+    if (nl < 0) continue
+    const title = afterGt.slice(0, nl).trim().toLowerCase()
+    const body = afterGt.slice(nl + 1).trim()
+    if (title.startsWith('asunto')) {
+      subject = body.split(/\r?\n/)[0]?.trim() || ''
+    } else if (title.startsWith('destinatario')) {
+      for (const line of body.split(/\r?\n/)) {
+        const e = line.replace(/^[•\-\*\s]+/, '').trim()
+        if (e) sentTo.push(e)
+      }
+    } else if (title.includes('ids ses')) {
+      for (const line of body.split(/\r?\n/)) {
+        const id = line.replace(/^[•\-\*\s]+/, '').replace(/[<>]/g, '').trim()
+        if (id) messageIds.push(id)
+      }
+    }
+  }
+  if (!subject && sentTo.length === 0 && messageIds.length === 0) return null
+  return { subject, sentTo, messageIds }
+}
 
 /** Extrae solo direcciones de correo desde texto que puede contener HTML mailto. */
 function toPlainEmails(raw) {
@@ -27,6 +60,11 @@ function toPlainEmails(raw) {
 function parseNote(note) {
   if (!note || typeof note !== 'string') return null
   if (!note.includes(PANEL_MARKER)) return null
+
+  const gt = parseNoteGtSections(note)
+  if (gt && (gt.subject || gt.sentTo.length > 0 || gt.messageIds.length > 0)) {
+    return { subject: gt.subject, sentTo: gt.sentTo, messageIds: gt.messageIds }
+  }
 
   let subject = ''
   const blockSubj = note.match(RE_BLOCK_ASUNTO)
@@ -48,7 +86,7 @@ function parseNote(note) {
 
   let messageIdsRaw = (note.match(RE_BLOCK_MSGIDS) || [])[1]?.trim() || ''
   if (!messageIdsRaw) messageIdsRaw = (note.match(RE_MESSAGE_IDS_LEGACY) || [])[1]?.trim() || ''
-  const messageIds = messageIdsRaw ? messageIdsRaw.split(',').map((e) => e.trim()).filter(Boolean) : []
+  const messageIds = messageIdsRaw ? messageIdsRaw.split(/[\n,]+/).map((e) => e.replace(/^[•\-\*\s]+/, '').replace(/[<>]/g, '').trim()).filter(Boolean) : []
   return { subject, sentTo, messageIds }
 }
 
