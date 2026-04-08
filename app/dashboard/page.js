@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo
 
 const SentEmailsView = lazy(() => import('./SentEmailsView'))
 
+/** Mínimo de caracteres para buscar organizaciones en Pipedrive (no se lista el catálogo completo). */
+const REMOTE_ORG_SEARCH_MIN = 4
+
 export default function DashboardPage() {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
@@ -184,8 +187,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const q = companyQuery.trim()
-    if (q.length < 2) {
+    if (q.length < REMOTE_ORG_SEARCH_MIN) {
       setRemoteOrgs([])
+      setRemoteLoading(false)
       return
     }
     const timer = setTimeout(() => {
@@ -464,7 +468,7 @@ export default function DashboardPage() {
           <>
         <h2 className="page-title">Enviar correos</h2>
         <p className="dash-intro">
-          <strong>Actividades atrasadas</strong> por empresa (solo vencidas; no incluye pendientes ni las que vencen hoy). Límite con <code>PIPEDRIVE_MAX_ITEMS</code>. En el buscador puedes elegir una empresa <strong>con</strong> actividad atrasada o buscar <strong>cualquier</strong> organización en Pipedrive (escribe 2+ letras) y enviar correo aunque no tenga tarea pendiente. La lista de actividades se <strong>actualiza sola</strong> cada minuto (configurable con <code>NEXT_PUBLIC_ACTIVITIES_POLL_SEC</code> en segundos). <strong>Actualizar lista</strong> fuerza una sincronización ya.
+          <strong>Actividades atrasadas</strong> por empresa (solo vencidas; no incluye pendientes ni las que vencen hoy). Límite con <code>PIPEDRIVE_MAX_ITEMS</code>. En el buscador puedes elegir una empresa <strong>con</strong> actividad atrasada o buscar <strong>cualquier</strong> organización en Pipedrive (escribe al menos {REMOTE_ORG_SEARCH_MIN} letras; no se muestran listas genéricas) y enviar correo aunque no tenga tarea pendiente. La lista de actividades se <strong>actualiza sola</strong> cada minuto (configurable con <code>NEXT_PUBLIC_ACTIVITIES_POLL_SEC</code> en segundos). <strong>Actualizar lista</strong> fuerza una sincronización ya.
         </p>
 
       {showNewTemplate && (
@@ -500,7 +504,7 @@ export default function DashboardPage() {
               className="company-combobox-input"
               type="search"
               autoComplete="off"
-              placeholder="Filtra empresas con atraso o escribe 2+ letras para buscar en Pipedrive…"
+              placeholder={`Filtra empresas con atraso o escribe ${REMOTE_ORG_SEARCH_MIN}+ letras para buscar en Pipedrive…`}
               value={companyQuery}
               onChange={(e) => {
                 setCompanyQuery(e.target.value)
@@ -529,7 +533,7 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
-                {companyQuery.trim().length >= 2 && (
+                {companyQuery.trim().length >= REMOTE_ORG_SEARCH_MIN && (
                   <div className="company-combobox-section">
                     <div className="company-combobox-section-title">
                       {remoteLoading ? 'Buscando en Pipedrive…' : 'Más empresas en Pipedrive'}
@@ -550,8 +554,10 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
-                {companyQuery.trim().length < 2 && filteredActivityCompanies.length === 0 && (
-                  <div className="company-combobox-hint">Escribe al menos 2 letras para buscar cualquier empresa en Pipedrive.</div>
+                {filteredActivityCompanies.length === 0 && companyQuery.trim().length > 0 && companyQuery.trim().length < REMOTE_ORG_SEARCH_MIN && (
+                  <div className="company-combobox-hint">
+                    Escribe al menos {REMOTE_ORG_SEARCH_MIN} letras para buscar otras organizaciones en Pipedrive.
+                  </div>
                 )}
               </div>
             )}
@@ -601,7 +607,7 @@ export default function DashboardPage() {
         />
       ) : activities.length === 0 ? (
         <div className="empty-state">
-          No hay actividades atrasadas con el filtro actual. Usa el buscador de arriba (2+ letras) para elegir cualquier empresa de Pipedrive y enviar correo.
+          {`No hay actividades atrasadas con el filtro actual. Usa el buscador de arriba (${REMOTE_ORG_SEARCH_MIN}+ letras) para elegir cualquier empresa de Pipedrive y enviar correo.`}
         </div>
       ) : (
         <>
