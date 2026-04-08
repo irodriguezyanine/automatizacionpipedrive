@@ -4,9 +4,14 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 45
 
 const PANEL_MARKER = 'Completada desde panel'
-const RE_ASUNTO = /Asunto:\s*(.+?)(?:\n|$)/i
-const RE_ENVIADO_A = /Enviado a:\s*(.+?)(?:\n|$)/i
-const RE_MESSAGE_IDS = /MessageIds?\s*\(SES\):\s*(.+?)(?:\n|$)/i
+/** Formato antiguo (una línea) */
+const RE_ASUNTO_LEGACY = /Asunto:\s*([^\n]+)/i
+const RE_ENVIADO_LEGACY = /Enviado a:\s*([^\n]+)/i
+/** Formato con bloques (nota legible en Pipedrive) */
+const RE_BLOCK_ASUNTO = /─+\s*\nASUNTO\s*\n─+\s*\n+([\s\S]+?)(?=\n\s*─+\s*\n(?:DESTINATARIOS|MESSAGE|CUERPO))/i
+const RE_BLOCK_DEST = /─+\s*\nDESTINATARIOS\s*\n─+\s*\n+([\s\S]+?)(?=\n\s*─+\s*\n(?:MESSAGE|CUERPO)|$)/i
+const RE_BLOCK_MSGIDS = /─+\s*\nMESSAGE IDS \(SES\)\s*\n─+\s*\n+([\s\S]+?)(?=\n\s*─+\s*\nCUERPO|$)/i
+const RE_MESSAGE_IDS_LEGACY = /MessageIds?\s*\(SES\):\s*(.+?)(?:\n|$)/i
 
 /** Extrae solo direcciones de correo desde texto que puede contener HTML mailto. */
 function toPlainEmails(raw) {
@@ -22,10 +27,27 @@ function toPlainEmails(raw) {
 function parseNote(note) {
   if (!note || typeof note !== 'string') return null
   if (!note.includes(PANEL_MARKER)) return null
-  const subject = (note.match(RE_ASUNTO) || [])[1]?.trim() || ''
-  const sentToRaw = (note.match(RE_ENVIADO_A) || [])[1]?.trim() || ''
-  const sentTo = sentToRaw ? toPlainEmails(sentToRaw) : []
-  const messageIdsRaw = (note.match(RE_MESSAGE_IDS) || [])[1]?.trim() || ''
+
+  let subject = ''
+  const blockSubj = note.match(RE_BLOCK_ASUNTO)
+  if (blockSubj) {
+    subject = blockSubj[1].trim().split(/\n+/)[0] || blockSubj[1].trim()
+  } else {
+    subject = (note.match(RE_ASUNTO_LEGACY) || [])[1]?.trim() || ''
+  }
+
+  let sentTo = []
+  const blockDest = note.match(RE_BLOCK_DEST)
+  if (blockDest) {
+    const lines = blockDest[1].split(/\n/).map((l) => l.replace(/^[•\-\*]\s*/, '').trim()).filter(Boolean)
+    sentTo = lines.length ? lines : toPlainEmails(blockDest[1].replace(/,/g, ' '))
+  } else {
+    const sentToRaw = (note.match(RE_ENVIADO_LEGACY) || [])[1]?.trim() || ''
+    sentTo = sentToRaw ? toPlainEmails(sentToRaw) : []
+  }
+
+  let messageIdsRaw = (note.match(RE_BLOCK_MSGIDS) || [])[1]?.trim() || ''
+  if (!messageIdsRaw) messageIdsRaw = (note.match(RE_MESSAGE_IDS_LEGACY) || [])[1]?.trim() || ''
   const messageIds = messageIdsRaw ? messageIdsRaw.split(',').map((e) => e.trim()).filter(Boolean) : []
   return { subject, sentTo, messageIds }
 }

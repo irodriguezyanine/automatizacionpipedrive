@@ -10,18 +10,22 @@ function addDays(date, days) {
 
 function stripHtml(html) {
   if (!html || typeof html !== 'string') return ''
-  return html
+  let t = html
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/blockquote>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+  return t.trim()
 }
+
+const NOTE_LINE = '────────────────────────────────────────'
 
 const DEFAULT_FOLLOW_UP_DAYS = 7
 
@@ -38,12 +42,21 @@ export async function POST(req) {
     }
 
     const noteParts = []
-    noteParts.push('Completada desde panel Vedisa. Correo enviado.\n\n')
-    if (subject) noteParts.push(`Asunto: ${subject}\n\n`)
-    if (Array.isArray(sentTo) && sentTo.length) noteParts.push(`Enviado a: ${sentTo.join(', ')}\n\n`)
+    noteParts.push('Completada desde panel Vedisa · correo enviado.\n\n')
+    noteParts.push(`${NOTE_LINE}\nASUNTO\n${NOTE_LINE}\n\n`)
+    noteParts.push(`${(subject || '—').trim()}\n\n`)
+    if (Array.isArray(sentTo) && sentTo.length) {
+      noteParts.push(`${NOTE_LINE}\nDESTINATARIOS\n${NOTE_LINE}\n\n`)
+      noteParts.push(sentTo.map((e) => `• ${String(e).trim()}`).join('\n'))
+      noteParts.push('\n\n')
+    }
+    if (Array.isArray(messageIds) && messageIds.length) {
+      noteParts.push(`${NOTE_LINE}\nMESSAGE IDS (SES)\n${NOTE_LINE}\n\n`)
+      noteParts.push(`${messageIds.join(', ')}\n\n`)
+    }
     if (bodyHtml) {
       const bodyText = stripHtml(bodyHtml)
-      noteParts.push('--- Cuerpo del correo ---\n\n')
+      noteParts.push(`${NOTE_LINE}\nCUERPO DEL CORREO (texto plano)\n${NOTE_LINE}\n\n`)
       noteParts.push(bodyText)
     }
     const note = noteParts.join('').trim()
