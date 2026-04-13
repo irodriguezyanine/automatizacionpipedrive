@@ -9,8 +9,9 @@ export async function GET(request) {
   try {
     const q = request.nextUrl?.searchParams?.get('q') || ''
     const limitParam = request.nextUrl?.searchParams?.get('limit')
-    const limit = limitParam ? Number(limitParam) : 50
-    const list = await searchOrganizations(q, { limit })
+    const maxTotalRaw = limitParam ? Number(limitParam) : 500
+    const maxTotal = Number.isFinite(maxTotalRaw) ? Math.min(2000, Math.max(1, maxTotalRaw)) : 500
+    const list = await searchOrganizations(q, { maxTotal })
     return Response.json({ organizations: list })
   } catch (err) {
     console.error('organizations search:', err)

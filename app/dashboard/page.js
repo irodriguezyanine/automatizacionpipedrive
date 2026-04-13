@@ -82,12 +82,10 @@ export default function DashboardPage() {
     return sortedCompanyNames.filter((n) => n.toLowerCase().includes(qActivityLower))
   }, [sortedCompanyNames, qActivityLower])
 
-  /** Búsqueda en todo Pipedrive solo si no hay ninguna empresa *con actividad abierta* que coincida (evita quitar espacio a esa lista). */
+  /** Búsqueda global en Pipedrive (además de empresas con actividad abierta) cuando el texto tiene longitud suficiente. */
   const showRemotePipedriveSection = useMemo(() => {
-    const q = companyQuery.trim()
-    if (q.length < REMOTE_ORG_SEARCH_MIN) return false
-    return filteredActivityCompanies.length === 0
-  }, [companyQuery, filteredActivityCompanies])
+    return companyQuery.trim().length >= REMOTE_ORG_SEARCH_MIN
+  }, [companyQuery])
 
   const remoteOrgsDeduped = useMemo(() => {
     const set = new Set(companyNames.map((n) => n.toLowerCase()))
@@ -194,23 +192,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const q = companyQuery.trim()
-    const qLower = q.toLowerCase()
     if (q.length < REMOTE_ORG_SEARCH_MIN) {
-      setRemoteOrgs([])
-      setRemoteLoading(false)
-      return
-    }
-    const localFiltered = qLower
-      ? sortedCompanyNames.filter((n) => n.toLowerCase().includes(qLower))
-      : sortedCompanyNames
-    if (localFiltered.length > 0) {
       setRemoteOrgs([])
       setRemoteLoading(false)
       return
     }
     const timer = setTimeout(() => {
       setRemoteLoading(true)
-      fetch(`/api/organizations?q=${encodeURIComponent(q)}`, { credentials: 'include' })
+      fetch(`/api/organizations?q=${encodeURIComponent(q)}&limit=500`, { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : { organizations: [] }))
         .then((data) => {
           setRemoteOrgs(Array.isArray(data.organizations) ? data.organizations : [])
@@ -219,7 +208,7 @@ export default function DashboardPage() {
         .finally(() => setRemoteLoading(false))
     }, 320)
     return () => clearTimeout(timer)
-  }, [companyQuery, sortedCompanyNames])
+  }, [companyQuery])
 
   useEffect(() => {
     function onDocMouseDown(e) {
