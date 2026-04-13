@@ -7,6 +7,9 @@ const SentEmailsView = lazy(() => import('./SentEmailsView'))
 /** Mínimo de caracteres para buscar organizaciones en Pipedrive (no se lista el catálogo completo). */
 const REMOTE_ORG_SEARCH_MIN = 4
 
+/** Debe ser menor que `maxDuration` de `app/api/activities/route.js` (margen para red). */
+const ACTIVITIES_FETCH_TIMEOUT_MS = 90_000
+
 export default function DashboardPage() {
   const [activities, setActivities] = useState([])
   const [loading, setLoading] = useState(true)
@@ -141,7 +144,7 @@ export default function DashboardPage() {
   useEffect(() => {
     setLoading(true)
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 25000)
+    const timeout = setTimeout(() => controller.abort(), ACTIVITIES_FETCH_TIMEOUT_MS)
     const activitiesUrl = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
 
     Promise.all([
@@ -177,7 +180,9 @@ export default function DashboardPage() {
       })
       .catch((e) => {
         if (e.name === 'AbortError') {
-          setError('La carga tardó demasiado. Revisa variables de entorno en Vercel o conexión con Pipedrive.')
+          setError(
+            'La carga superó el tiempo de espera. Suele ocurrir con muchas actividades o si Pipedrive va lento. Prueba "Actualizar lista" en unos segundos; en Vercel puedes bajar PIPEDRIVE_MAX_ITEMS o PIPEDRIVE_ENRICH_CONCURRENCY si persiste.'
+          )
         } else {
           setError(e.message || 'Error al cargar actividades')
         }

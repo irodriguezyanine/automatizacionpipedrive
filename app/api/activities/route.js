@@ -13,7 +13,8 @@ import {
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+/** Plan Vercel Pro (o superior): permite respuestas largas al enriquecer muchas actividades. Hobby queda en ~10 s salvo que subas el límite. */
+export const maxDuration = 120
 
 function formatLocalYmd(date = new Date()) {
   const y = date.getFullYear()
