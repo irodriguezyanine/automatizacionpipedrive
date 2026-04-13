@@ -47,10 +47,13 @@ export async function GET(request) {
   try {
     const ownerIdParam = request.nextUrl?.searchParams?.get('owner_id')
     const ownerId = ownerIdParam ? Number(ownerIdParam) : undefined
-    const configuredMax = Number(process.env.PIPEDRIVE_MAX_ITEMS || 80)
-    const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 300) : 80
+    /** Por defecto 50 para evitar timeouts; sube con PIPEDRIVE_MAX_ITEMS en Vercel si hace falta. */
+    const configuredMax = Number(process.env.PIPEDRIVE_MAX_ITEMS || 50)
+    const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 300) : 50
     const configuredConcurrency = Number(process.env.PIPEDRIVE_ENRICH_CONCURRENCY || 6)
     const enrichConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0 ? Math.min(configuredConcurrency, 12) : 6
+    /** Cargar todos los contactos de la empresa por actividad es muy lento (muchas llamadas). Solo activar si lo necesitas. */
+    const includeOrgWidePersons = process.env.PIPEDRIVE_INCLUDE_ORG_PERSONS_IN_PANEL === 'true'
     const { all } = await getAllActivitiesNotDone({ maxItems, ownerId })
     const todayStr = formatLocalYmd()
     /** Todas las no completadas: atrasadas, vencen hoy y pendientes (futuro o sin fecha). */
@@ -173,7 +176,7 @@ export async function GET(request) {
 
       /** Emails/nombres que vienen en la lista de participantes del deal (a veces no repetidos en GET persons/{id}). */
       const dealRowByPersonId = new Map()
-      if (orgId) {
+      if (includeOrgWidePersons && orgId) {
         const orgPersons = await getPersonsByOrgCached(orgId)
         for (const person of orgPersons) personIds.add(person.id)
       }

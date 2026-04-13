@@ -181,7 +181,7 @@ export default function DashboardPage() {
       .catch((e) => {
         if (e.name === 'AbortError') {
           setError(
-            'La carga superó el tiempo de espera. Suele ocurrir con muchas actividades o si Pipedrive va lento. Prueba "Actualizar lista" en unos segundos; en Vercel puedes bajar PIPEDRIVE_MAX_ITEMS o PIPEDRIVE_ENRICH_CONCURRENCY si persiste.'
+            'La carga superó el tiempo de espera. Prueba "Actualizar lista" más tarde. En Vercel: sube el límite de duración de funciones (plan Pro) o baja PIPEDRIVE_MAX_ITEMS. No actives PIPEDRIVE_INCLUDE_ORG_PERSONS_IN_PANEL salvo que lo necesites (ralentiza mucho).'
           )
         } else {
           setError(e.message || 'Error al cargar actividades')
