@@ -20,8 +20,8 @@ function withTimeout(promise, ms, message) {
 
 const SentEmailsView = lazy(() => import('./SentEmailsView'))
 
-/** Mínimo de caracteres para buscar organizaciones en Pipedrive (no se lista el catálogo completo). */
-const REMOTE_ORG_SEARCH_MIN = 4
+/** Mínimo de caracteres para buscar organizaciones en Pipedrive (API exige 2). */
+const REMOTE_ORG_SEARCH_MIN = 2
 
 /** Debe ser menor que `maxDuration` de `app/api/activities/route.js` (margen para red). */
 const ACTIVITIES_FETCH_TIMEOUT_MS = 90_000
@@ -109,8 +109,19 @@ export default function DashboardPage() {
 
   const remoteOrgsDeduped = useMemo(() => {
     const set = new Set(companyNames.map((n) => n.toLowerCase()))
-    return remoteOrgs.filter((o) => o?.name && !set.has(String(o.name).toLowerCase()))
-  }, [remoteOrgs, companyNames])
+    const q = qActivityLower
+    const filtered = remoteOrgs.filter((o) => o?.name && !set.has(String(o.name).toLowerCase()))
+    return filtered.sort((a, b) => {
+      const an = String(a.name).toLowerCase()
+      const bn = String(b.name).toLowerCase()
+      if (q) {
+        const aStarts = an.startsWith(q) ? 0 : an.includes(q) ? 1 : 2
+        const bStarts = bn.startsWith(q) ? 0 : bn.includes(q) ? 1 : 2
+        if (aStarts !== bStarts) return aStarts - bStarts
+      }
+      return an.localeCompare(bn, 'es', { sensitivity: 'base' })
+    })
+  }, [remoteOrgs, companyNames, qActivityLower])
 
   function selectActivityCompany(name) {
     const idx = companyNames.indexOf(name)
@@ -629,7 +640,7 @@ export default function DashboardPage() {
               className="company-combobox-input"
               type="search"
               autoComplete="off"
-              placeholder="Buscar empresa con actividad abierta… (si no aparece, escribe 4+ letras para buscar en Pipedrive)"
+              placeholder="Buscar empresa… (2+ letras busca en todo Pipedrive; arriba las que tienen actividad abierta)"
               value={companyQuery}
               onChange={(e) => {
                 setCompanyQuery(e.target.value)
@@ -664,7 +675,9 @@ export default function DashboardPage() {
                       {remoteLoading ? 'Buscando en Pipedrive…' : 'Más empresas en Pipedrive'}
                     </div>
                     {!remoteLoading && remoteOrgsDeduped.length === 0 && (
-                      <div className="company-combobox-empty">Sin coincidencias adicionales (o ya están arriba).</div>
+                      <div className="company-combobox-empty">
+                        Sin coincidencias en Pipedrive para «{companyQuery.trim()}». Prueba con más letras del nombre exacto.
+                      </div>
                     )}
                     {remoteOrgsDeduped.map((o) => (
                       <button
