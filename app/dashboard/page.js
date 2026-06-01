@@ -341,13 +341,19 @@ export default function DashboardPage() {
       if (!proceed) return
     }
     let attachmentRefs = null
+    let attachmentsSkippedAny = false
     if (hasUserAttachments && shouldUseBlobUpload(attachmentFiles)) {
-      setToast({ type: 'info', message: 'Subiendo adjuntos…' })
-      attachmentRefs = await withTimeout(
-        uploadEmailAttachments(attachmentFiles),
-        UPLOAD_ATTACHMENTS_TIMEOUT_MS,
-        'La subida del adjunto tardó demasiado. Verifica Blob Storage (BLOB_READ_WRITE_TOKEN) en Vercel.'
-      )
+      try {
+        setToast({ type: 'info', message: 'Subiendo adjuntos…' })
+        attachmentRefs = await withTimeout(
+          uploadEmailAttachments(attachmentFiles),
+          UPLOAD_ATTACHMENTS_TIMEOUT_MS,
+          'La subida del adjunto tardó demasiado. Verifica Blob Storage (BLOB_READ_WRITE_TOKEN) en Vercel.'
+        )
+      } catch (e) {
+        console.warn('[send] adjunto no subido, se enviará sin él:', e?.message)
+        attachmentsSkippedAny = true
+      }
     }
     for (const p of selectedParticipants) {
       const nombre = getFirstName(p.name)
@@ -356,7 +362,9 @@ export default function DashboardPage() {
 
       let res
       const fetchOpts = { credentials: 'include', signal: AbortSignal.timeout(SEND_EMAIL_TIMEOUT_MS) }
-      if (hasUserAttachments && attachmentRefs) {
+      const sendWithBlobRefs = hasUserAttachments && attachmentRefs
+      const sendWithFormFiles = hasUserAttachments && !attachmentRefs && !shouldUseBlobUpload(attachmentFiles)
+      if (sendWithBlobRefs) {
         res = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -371,7 +379,7 @@ export default function DashboardPage() {
             attachmentRefs,
           }),
         })
-      } else if (hasUserAttachments) {
+      } else if (sendWithFormFiles) {
         const form = new FormData()
         form.append('to', p.email)
         form.append('subject', subject)
@@ -398,6 +406,9 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         if (data.messageId) messageIds.push(data.messageId)
+        if (Array.isArray(data.attachmentsSkipped) && data.attachmentsSkipped.length > 0) {
+          attachmentsSkippedAny = true
+        }
       } else {
         ok = false
         const errData = await res.json().catch(() => ({}))
@@ -405,9 +416,15 @@ export default function DashboardPage() {
         sendErrors.push(`${p.name || p.email}: ${errMsg}`)
       }
     }
+    const skippedAttachmentMsg = 'Se envió el correo, pero sin el archivo adjunto.'
     if (ok) {
       if (item.activityId == null) {
-        setToast({ type: 'success', message: 'Correo(s) enviado(s). (No hay actividad vinculada en Pipedrive.)' })
+        setToast({
+          type: attachmentsSkippedAny ? 'warning' : 'success',
+          message: attachmentsSkippedAny
+            ? skippedAttachmentMsg
+            : 'Correo(s) enviado(s). (No hay actividad vinculada en Pipedrive.)',
+        })
         return
       }
       const sentToEmails = selectedParticipants.map((p) => p.email)
@@ -437,7 +454,12 @@ export default function DashboardPage() {
               return da - db
             })
         )
-        setToast({ type: 'success', message: `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.` })
+        setToast({
+          type: attachmentsSkippedAny ? 'warning' : 'success',
+          message: attachmentsSkippedAny
+            ? `${skippedAttachmentMsg} Actividad completada y nueva programada en ${periodText}.`
+            : `Correo(s) enviado(s). Actividad completada y nueva programada en ${periodText}.`,
+        })
       } else {
         const errData = await res.json().catch(() => ({}))
         const errMsg = errData?.error || 'No se pudo completar la actividad en Pipedrive.'

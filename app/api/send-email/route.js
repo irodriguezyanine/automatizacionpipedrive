@@ -101,24 +101,34 @@ async function fileEntriesFromForm(form) {
   return out
 }
 
-async function attachmentsFromRefs(refs) {
+async function attachmentsFromRefs(refs, skipped = []) {
   if (!Array.isArray(refs)) return []
   const out = []
   let total = 0
   for (const ref of refs) {
-    const content = await downloadBlobAttachment(ref)
-    if (content.length > MAX_ATTACHMENT_FILE_BYTES) {
-      throw new Error(`El adjunto "${ref.filename}" supera el tamaño máximo permitido.`)
+    const label = ref?.filename || 'adjunto'
+    try {
+      const content = await downloadBlobAttachment(ref)
+      if (content.length > MAX_ATTACHMENT_FILE_BYTES) {
+        skipped.push(label)
+        console.warn(`[send-email] adjunto omitido (tamaño): ${label}`)
+        continue
+      }
+      total += content.length
+      if (total > MAX_ATTACHMENT_TOTAL_BYTES) {
+        skipped.push(label)
+        console.warn(`[send-email] adjunto omitido (total): ${label}`)
+        continue
+      }
+      out.push({
+        filename: safeFilename(label),
+        content,
+        contentType: ref.contentType || 'application/octet-stream',
+      })
+    } catch (err) {
+      skipped.push(label)
+      console.warn(`[send-email] adjunto omitido: ${label}`, err.message)
     }
-    total += content.length
-    if (total > MAX_ATTACHMENT_TOTAL_BYTES) {
-      throw new Error('El total de adjuntos supera el tamaño máximo permitido.')
-    }
-    out.push({
-      filename: safeFilename(ref.filename || 'adjunto'),
-      content,
-      contentType: ref.contentType || 'application/octet-stream',
-    })
   }
   return out
 }
@@ -144,9 +154,7 @@ async function parseSendEmailRequest(req) {
 
   const body = await req.json()
   const attachmentRefs = Array.isArray(body.attachmentRefs) ? body.attachmentRefs : []
-  const userAttachments = attachmentRefs.length
-    ? await attachmentsFromRefs(attachmentRefs)
-    : decodeBase64Attachments(body.attachments)
+  const userAttachments = attachmentRefs.length ? [] : decodeBase64Attachments(body.attachments)
 
   return {
     to: body.to,
@@ -161,39 +169,53 @@ async function parseSendEmailRequest(req) {
   }
 }
 
-function assertSesSizeLimit(attachments, useGmail) {
-  if (useGmail) return
+function applySesAttachmentLimit(attachments, useGmail, skipped) {
+  if (useGmail || !attachments.length) return attachments
   const totalSize = attachments.reduce((s, a) => s + (a.content?.length || 0), 0)
-  if (totalSize > SES_RAW_MESSAGE_MAX_BYTES * 0.92) {
-    throw new Error(
-      'Los adjuntos superan ~10 MB (límite de AWS SES). Comprime el PDF, envía con Gmail (GMAIL_USER en Vercel) o usa un archivo más liviano.'
-    )
+  if (totalSize <= SES_RAW_MESSAGE_MAX_BYTES * 0.92) return attachments
+  for (const att of attachments) {
+    skipped.push(att.filename || 'adjunto')
   }
+  console.warn('[send-email] adjuntos omitidos por límite SES (~10 MB)')
+  return []
 }
 
 export async function POST(req) {
   try {
     const parsed = await parseSendEmailRequest(req)
-    const { to, subject, bodyHtml, fromPreset, cc, bcc, attachPresentation, userAttachments } = parsed
+    const { to, subject, bodyHtml, fromPreset, cc, bcc, attachPresentation, attachmentRefs } = parsed
     if (!to || !subject) {
       return Response.json({ error: 'Faltan to o subject' }, { status: 400 })
     }
     const ccMerged = mergeCc(cc)
+    const attachmentsSkipped = []
+
+    let userAttachments = parsed.userAttachments || []
+    if (attachmentRefs?.length) {
+      userAttachments = await attachmentsFromRefs(attachmentRefs, attachmentsSkipped)
+    }
 
     const attachments = [...userAttachments]
     if (attachPresentation) {
       const att = getPresentationAttachment()
       if (att) attachments.push(att)
-      else console.warn('[send-email] Adjunto presentación solicitado pero no se encontró el archivo:', PRESENTATION_PDF_PATH)
+      else {
+        attachmentsSkipped.push('Presentación Vedisa (PDF)')
+        console.warn('[send-email] Adjunto presentación solicitado pero no se encontró el archivo:', PRESENTATION_PDF_PATH)
+      }
     }
 
     const totalSize = attachments.reduce((s, a) => s + (a.content?.length || 0), 0)
     if (totalSize > MAX_ATTACHMENT_TOTAL_BYTES) {
-      return Response.json({ error: 'El total de adjuntos supera el tamaño máximo permitido (15 MB).' }, { status: 400 })
+      for (const att of attachments) {
+        attachmentsSkipped.push(att.filename || 'adjunto')
+      }
+      attachments.length = 0
+      console.warn('[send-email] adjuntos omitidos por límite total (15 MB)')
     }
 
     const useGmail = process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
-    assertSesSizeLimit(attachments, useGmail)
+    const attachmentsToSend = applySesAttachmentLimit(attachments, useGmail, attachmentsSkipped)
 
     const sendEmail = useGmail ? sendEmailGmail : sendEmailSes
     const { html: bodyWithSignatureCids, inlineAttachments } = applySignatureCids(bodyHtml || '')
@@ -204,13 +226,18 @@ export async function POST(req) {
       bodyHtml: bodyWithSignatureCids,
       cc: ccMerged,
       bcc: bcc || [],
-      attachments,
+      attachments: attachmentsToSend,
       inlineAttachments,
     }
     if (!useGmail) payload.fromPreset = fromPreset
 
     const { messageId } = await sendEmail(payload)
-    return Response.json({ success: true, messageId })
+    const uniqueSkipped = [...new Set(attachmentsSkipped.filter(Boolean))]
+    return Response.json({
+      success: true,
+      messageId,
+      ...(uniqueSkipped.length > 0 ? { attachmentsSkipped: uniqueSkipped } : {}),
+    })
   } catch (err) {
     console.error(err)
     return Response.json({ error: err.message }, { status: 500 })

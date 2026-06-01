@@ -226,6 +226,16 @@ input, textarea, button, select {
   color: #fff;
 }
 
+.toast-warning {
+  background: #d97706;
+  color: #fff;
+}
+
+.toast-info {
+  background: var(--accent, #2563eb);
+  color: #fff;
+}
+
 .toast-error {
   background: var(--error);
   color: #fff;
