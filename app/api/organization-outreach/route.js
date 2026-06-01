@@ -1,4 +1,4 @@
-import { getOrganization, getPersonsByOrg, getPrimaryEmail } from '../../../lib/pipedrive.js'
+import { getOrganization, getPersonsByOrg, getPrimaryEmail, getOpenActivitiesByOrg, pickPrimaryOpenActivity } from '../../../lib/pipedrive.js'
 import { buildFollowUpEmail } from '../../../lib/email-templates.js'
 
 export const dynamic = 'force-dynamic'
@@ -36,15 +36,18 @@ export async function GET(request) {
       orgName,
     })
 
+    const openActivities = await getOpenActivitiesByOrg(orgId)
+    const linkedActivity = pickPrimaryOpenActivity(openActivities)
+
     return Response.json({
-      standalone: true,
-      activityId: null,
+      standalone: linkedActivity == null,
+      activityId: linkedActivity?.id ?? null,
       orgId,
       orgName,
-      subject: 'Correo desde panel (sin actividad)',
-      type: 'task',
-      dueDate: null,
-      isOverdue: false,
+      subject: linkedActivity?.subject || 'Correo desde panel (sin actividad)',
+      type: linkedActivity?.type || 'task',
+      dueDate: linkedActivity?.due_date ?? null,
+      isOverdue: linkedActivity?.due_date ? new Date(linkedActivity.due_date) <= new Date() : false,
       isDueToday: false,
       primaryName,
       participants,

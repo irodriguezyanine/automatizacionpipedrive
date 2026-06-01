@@ -441,7 +441,10 @@ export default function DashboardPage() {
     }
     const skippedAttachmentMsg = 'Se envió el correo, pero sin el archivo adjunto.'
     if (ok) {
-      if (item.activityId == null) {
+      const sentToEmails = selectedParticipants.map((p) => p.email)
+      const canSyncPipedrive = item.activityId != null || item.orgId != null
+
+      if (!canSyncPipedrive) {
         setToast({
           type: attachmentsSkippedAny ? 'warning' : 'success',
           message: attachmentsSkippedAny
@@ -450,13 +453,14 @@ export default function DashboardPage() {
         })
         return
       }
-      const sentToEmails = selectedParticipants.map((p) => p.email)
+
       const res = await fetch('/api/complete-activity', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          activityId: item.activityId,
+          activityId: item.activityId ?? undefined,
+          orgId: item.orgId ?? undefined,
           subject,
           bodyHtml,
           sentTo: sentToEmails,
@@ -468,15 +472,20 @@ export default function DashboardPage() {
       const days = data?.followUpInDays ?? followUpInDays ?? 7
       const periodText = days === 7 ? '7 días' : days === 14 ? '2 semanas' : days === 21 ? '3 semanas' : days === 30 ? '1 mes' : days === 60 ? '2 meses' : `${days} días`
       if (res.ok) {
-        setActivities((prev) =>
-          prev
-            .filter((a) => a.activityId !== item.activityId)
-            .sort((a, b) => {
-              const da = a.dueDate ? new Date(a.dueDate).getTime() : 0
-              const db = b.dueDate ? new Date(b.dueDate).getTime() : 0
-              return da - db
-            })
-        )
+        if (item.activityId != null) {
+          setActivities((prev) =>
+            prev
+              .filter((a) => a.activityId !== item.activityId)
+              .sort((a, b) => {
+                const da = a.dueDate ? new Date(a.dueDate).getTime() : 0
+                const db = b.dueDate ? new Date(b.dueDate).getTime() : 0
+                return da - db
+              })
+          )
+        } else {
+          setStandaloneItem(null)
+          setCompanyQuery('')
+        }
         setToast({
           type: attachmentsSkippedAny ? 'warning' : 'success',
           message: attachmentsSkippedAny
@@ -486,7 +495,10 @@ export default function DashboardPage() {
       } else {
         const errData = await res.json().catch(() => ({}))
         const errMsg = errData?.error || 'No se pudo completar la actividad en Pipedrive.'
-        setToast({ type: 'error', message: errMsg })
+        setToast({
+          type: 'warning',
+          message: `Correo(s) enviado(s), pero Pipedrive no se actualizó: ${errMsg}`,
+        })
       }
     } else {
       const detail = sendErrors.length > 0 ? sendErrors[0] : 'Revisa la consola o variables de entorno (SES).'
@@ -926,6 +938,7 @@ const MINIMAL_NEW_TEMPLATE_BODY = '<p>Hola {{nombre}},</p>\n\n'
 
 const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEditedSubject, setEditedBodyHtml, allTemplates, signatureHtml, onRequestNewTemplate, onSaveCustomTemplate }) {
   const isStandalone = item.activityId == null
+  const syncsPipedrive = item.activityId != null || item.orgId != null
   const cardKey = item.activityId != null ? String(item.activityId) : `org-${item.orgId ?? 'x'}`
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState(DEFAULT_CC)
@@ -1050,12 +1063,12 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   }
 
   return (
-    <div className={`card ${!isStandalone && item.isOverdue ? 'card-overdue' : !isStandalone && item.isDueToday ? 'card-due-today' : ''}`}>
+    <div className={`card ${item.isOverdue ? 'card-overdue' : item.isDueToday ? 'card-due-today' : ''}`}>
       <div className="activity-meta">
         {isStandalone ? (
           <>
-            <span className="badge badge-standalone">Búsqueda libre</span>
-            <span>Envío sin actividad vinculada (no se completa tarea en Pipedrive)</span>
+            <span className="badge badge-standalone">Búsqueda en Pipedrive</span>
+            <span>Al enviar se completa la actividad abierta de esta empresa y se programa el siguiente seguimiento</span>
           </>
         ) : (
           <>
@@ -1289,7 +1302,7 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             includeDefaultPresentation={includeDefaultPresentation}
             onIncludeDefaultPresentationChange={setIncludeDefaultPresentation}
           />
-          {!isStandalone && (
+          {syncsPipedrive && (
             <div className="form-group">
               <label htmlFor={`follow-up-${cardKey}`}>Programar siguiente seguimiento en</label>
               <select
@@ -1316,9 +1329,9 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
           >
             {sending
               ? 'Enviando…'
-              : isStandalone
-                ? `Enviar a ${selectedParticipants.length} destinatario(s)`
-                : `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`}
+              : syncsPipedrive
+                ? `Enviar a ${selectedParticipants.length} destinatario(s) y completar actividad`
+                : `Enviar a ${selectedParticipants.length} destinatario(s)`}
           </button>
         </div>
       </div>
