@@ -1009,17 +1009,31 @@ input, textarea, button, select {
 
 .add-recipient-wrap {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.75rem;
   align-items: center;
 }
 .add-recipient-input {
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--neutral-200);
   border-radius: var(--radius);
   font-size: 0.9375rem;
+}
+.add-recipient-name {
+  flex: 1 1 160px;
+}
+.add-recipient-email {
+  flex: 1 1 200px;
+}
+.add-recipient-btn {
+  flex: 0 0 auto;
+}
+.add-recipient-hint {
+  margin-top: 0.35rem;
+  margin-bottom: 0;
 }
 .add-recipient-input:focus {
   outline: none;

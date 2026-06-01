@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo } from 'react'
 import AttachmentDropzone from './AttachmentDropzone'
+import { shouldUseBlobUpload, uploadEmailAttachments } from './upload-email-attachments'
 
 const SentEmailsView = lazy(() => import('./SentEmailsView'))
 
@@ -318,13 +319,44 @@ export default function DashboardPage() {
     const messageIds = []
     const sendErrors = []
     const hasUserAttachments = attachmentFiles.length > 0
+    let attachmentRefs = null
+    if (hasUserAttachments && shouldUseBlobUpload(attachmentFiles)) {
+      try {
+        setToast({ type: 'info', message: 'Subiendo adjuntos…' })
+        attachmentRefs = await uploadEmailAttachments(attachmentFiles)
+      } catch (e) {
+        setSending((s) => ({ ...s, [sendKey]: false }))
+        setToast({
+          type: 'error',
+          message:
+            e.message ||
+            'No se pudieron subir los adjuntos. En Vercel activa Blob Storage y la variable BLOB_READ_WRITE_TOKEN.',
+        })
+        return
+      }
+    }
     for (const p of selectedParticipants) {
       const nombre = getFirstName(p.name)
       const empresa = item.orgName || 'la empresa'
       const bodyForRecipient = fillPlaceholders(bodyHtml, nombre, empresa)
 
       let res
-      if (hasUserAttachments) {
+      if (hasUserAttachments && attachmentRefs) {
+        res = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            to: p.email,
+            subject,
+            bodyHtml: bodyForRecipient,
+            cc: ccList,
+            bcc: bccList,
+            attachPresentation,
+            attachmentRefs,
+          }),
+        })
+      } else if (hasUserAttachments) {
         const form = new FormData()
         form.append('to', p.email)
         form.append('subject', subject)
@@ -837,19 +869,34 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   const [isCreatingNewTemplate, setIsCreatingNewTemplate] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState('')
   const [extraRecipients, setExtraRecipients] = useState([])
+  const [addNameInput, setAddNameInput] = useState('')
   const [addEmailInput, setAddEmailInput] = useState('')
   const [addRecipientMsg, setAddRecipientMsg] = useState('')
+  const addNameInputRef = useRef(null)
   const addEmailInputRef = useRef(null)
   const previewRef = useRef(null)
   const subject = item.editedSubject ?? item.proposedSubject
   const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
-  const displayParticipants = [...item.participants, ...extraRecipients.map((e) => ({ personId: null, name: e.email, email: e.email }))]
+  const displayParticipants = [
+    ...item.participants,
+    ...extraRecipients.map((e) => ({
+      personId: null,
+      name: (e.name && String(e.name).trim()) || e.email,
+      email: e.email,
+    })),
+  ]
   const selectedParticipants = displayParticipants.filter((p) => selected[p.email])
 
-  function addExtraRecipient(rawValue) {
-    const raw = rawValue ?? addEmailInputRef.current?.value ?? addEmailInput
-    const e = String(raw || '').trim().toLowerCase()
+  function addExtraRecipient() {
+    const nameRaw = addNameInputRef.current?.value ?? addNameInput
+    const emailRaw = addEmailInputRef.current?.value ?? addEmailInput
+    const name = String(nameRaw || '').trim()
+    const e = String(emailRaw || '').trim().toLowerCase()
     setAddRecipientMsg('')
+    if (!name) {
+      setAddRecipientMsg('Escribe el nombre del contacto.')
+      return
+    }
     if (!e) {
       setAddRecipientMsg('Escribe un correo para agregar.')
       return
@@ -864,8 +911,9 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
       setAddRecipientMsg('Ese correo ya está en la lista.')
       return
     }
-    setExtraRecipients((prev) => [...prev, { email: e }])
+    setExtraRecipients((prev) => [...prev, { name, email: e }])
     setSelected((s) => ({ ...s, [e]: true }))
+    setAddNameInput('')
     setAddEmailInput('')
   }
 
@@ -1114,25 +1162,46 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             )}
             <div className="add-recipient-wrap">
               <input
+                ref={addNameInputRef}
+                type="text"
+                autoComplete="name"
+                className="add-recipient-input add-recipient-name"
+                placeholder="Nombre del contacto…"
+                value={addNameInput}
+                onChange={(e) => { setAddNameInput(e.target.value); setAddRecipientMsg('') }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addEmailInputRef.current?.focus()
+                  }
+                }}
+              />
+              <input
                 ref={addEmailInputRef}
                 type="email"
                 inputMode="email"
-                autoComplete="off"
-                className="add-recipient-input"
-                placeholder="Agregar otro correo…"
+                autoComplete="email"
+                className="add-recipient-input add-recipient-email"
+                placeholder="Correo electrónico…"
                 value={addEmailInput}
                 onChange={(e) => { setAddEmailInput(e.target.value); setAddRecipientMsg('') }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addExtraRecipient(addEmailInput || addEmailInputRef.current?.value) } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addExtraRecipient()
+                  }
+                }}
               />
               <button
                 type="button"
-                className="btn btn-secondary"
-                onClick={(ev) => { ev.preventDefault(); addExtraRecipient(addEmailInput || addEmailInputRef.current?.value) }}
+                className="btn btn-secondary add-recipient-btn"
+                onClick={(ev) => { ev.preventDefault(); addExtraRecipient() }}
               >
                 Agregar
               </button>
             </div>
             {addRecipientMsg && <p className="hint add-recipient-msg">{addRecipientMsg}</p>}
+            <p className="hint add-recipient-hint">El nombre se usa en el cuerpo del correo (por ejemplo en «Hola {'{{nombre}}'}»).</p>
           </div>
           <div className="form-group">
             <label>CC (opcional)</label>

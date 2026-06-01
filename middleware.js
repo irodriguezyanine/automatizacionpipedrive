@@ -7,7 +7,7 @@ export function middleware(request) {
   if (pathname.startsWith('/api/auth/login') || pathname.startsWith('/api/auth/logout')) {
     return NextResponse.next()
   }
-  if (pathname.startsWith('/dashboard') || pathname.startsWith('/api/activities') || pathname.startsWith('/api/send-email') || pathname.startsWith('/api/complete-activity')) {
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/api/activities') || pathname.startsWith('/api/send-email') || pathname.startsWith('/api/attachment-upload') || pathname.startsWith('/api/complete-activity')) {
     const cookie = request.cookies.get(COOKIE_NAME)?.value
     if (cookie !== 'ok') {
       if (pathname.startsWith('/api/')) {
@@ -21,5 +21,5 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: ['/dashboard', '/dashboard/:path*', '/api/activities', '/api/send-email', '/api/complete-activity', '/api/auth/login', '/api/auth/logout'],
+  matcher: ['/dashboard', '/dashboard/:path*', '/api/activities', '/api/send-email', '/api/attachment-upload', '/api/complete-activity', '/api/auth/login', '/api/auth/logout'],
 }
