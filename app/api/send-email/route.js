@@ -8,8 +8,11 @@ import {
   MULTIPART_DIRECT_MAX_BYTES,
   SES_RAW_MESSAGE_MAX_BYTES,
 } from '../../../lib/attachment-config.js'
+import { applySignatureCids } from '../../../lib/signature-assets.js'
+import { downloadBlobAttachment } from '../../../lib/blob-attachments.js'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120
 
 /** CC obligatorio en todos los envíos (comercial@vedisaremates.cl). */
 const MANDATORY_CC_EMAIL = process.env.EMAIL_CC_COMERCIAL || 'comercial@vedisaremates.cl'
@@ -103,11 +106,7 @@ async function attachmentsFromRefs(refs) {
   const out = []
   let total = 0
   for (const ref of refs) {
-    const url = ref?.url && String(ref.url).trim()
-    if (!url || !url.startsWith('http')) continue
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`No se pudo descargar el adjunto "${ref.filename || url}".`)
-    const content = Buffer.from(await res.arrayBuffer())
+    const content = await downloadBlobAttachment(ref)
     if (content.length > MAX_ATTACHMENT_FILE_BYTES) {
       throw new Error(`El adjunto "${ref.filename}" supera el tamaño máximo permitido.`)
     }
@@ -118,7 +117,7 @@ async function attachmentsFromRefs(refs) {
     out.push({
       filename: safeFilename(ref.filename || 'adjunto'),
       content,
-      contentType: ref.contentType || res.headers.get('content-type') || 'application/octet-stream',
+      contentType: ref.contentType || 'application/octet-stream',
     })
   }
   return out
@@ -197,14 +196,16 @@ export async function POST(req) {
     assertSesSizeLimit(attachments, useGmail)
 
     const sendEmail = useGmail ? sendEmailGmail : sendEmailSes
+    const { html: bodyWithSignatureCids, inlineAttachments } = applySignatureCids(bodyHtml || '')
 
     const payload = {
       to,
       subject,
-      bodyHtml: bodyHtml || '',
+      bodyHtml: bodyWithSignatureCids,
       cc: ccMerged,
       bcc: bcc || [],
       attachments,
+      inlineAttachments,
     }
     if (!useGmail) payload.fromPreset = fromPreset
 

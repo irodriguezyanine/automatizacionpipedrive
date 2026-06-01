@@ -3,6 +3,19 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo } from 'react'
 import AttachmentDropzone from './AttachmentDropzone'
 import { shouldUseBlobUpload, uploadEmailAttachments } from './upload-email-attachments'
+import { SES_RAW_MESSAGE_MAX_BYTES } from '../../lib/attachment-config.js'
+
+const UPLOAD_ATTACHMENTS_TIMEOUT_MS = 120_000
+const SEND_EMAIL_TIMEOUT_MS = 120_000
+
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), ms)
+    }),
+  ])
+}
 
 const SentEmailsView = lazy(() => import('./SentEmailsView'))
 
@@ -311,6 +324,7 @@ export default function DashboardPage() {
     }
     const sendKey = item.activityId != null ? item.activityId : `standalone-${item.orgId ?? 'x'}`
     setSending((s) => ({ ...s, [sendKey]: true }))
+    try {
     const subject = item.editedSubject ?? item.proposedSubject
     const bodyHtml = item.editedBodyHtml ?? item.proposedBodyHtml
     const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? String(cc).split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) : [])
@@ -319,21 +333,21 @@ export default function DashboardPage() {
     const messageIds = []
     const sendErrors = []
     const hasUserAttachments = attachmentFiles.length > 0
+    const attachmentBytes = attachmentFiles.reduce((s, f) => s + (f.size || 0), 0)
+    if (hasUserAttachments && attachmentBytes > SES_RAW_MESSAGE_MAX_BYTES * 0.92) {
+      const proceed = window.confirm(
+        'El adjunto pesa más de ~10 MB. Con AWS SES el envío puede fallar; para PDFs grandes configura Gmail (GMAIL_USER y GMAIL_APP_PASSWORD) en Vercel. ¿Deseas intentar enviar igual?'
+      )
+      if (!proceed) return
+    }
     let attachmentRefs = null
     if (hasUserAttachments && shouldUseBlobUpload(attachmentFiles)) {
-      try {
-        setToast({ type: 'info', message: 'Subiendo adjuntos…' })
-        attachmentRefs = await uploadEmailAttachments(attachmentFiles)
-      } catch (e) {
-        setSending((s) => ({ ...s, [sendKey]: false }))
-        setToast({
-          type: 'error',
-          message:
-            e.message ||
-            'No se pudieron subir los adjuntos. En Vercel activa Blob Storage y la variable BLOB_READ_WRITE_TOKEN.',
-        })
-        return
-      }
+      setToast({ type: 'info', message: 'Subiendo adjuntos…' })
+      attachmentRefs = await withTimeout(
+        uploadEmailAttachments(attachmentFiles),
+        UPLOAD_ATTACHMENTS_TIMEOUT_MS,
+        'La subida del adjunto tardó demasiado. Verifica Blob Storage (BLOB_READ_WRITE_TOKEN) en Vercel.'
+      )
     }
     for (const p of selectedParticipants) {
       const nombre = getFirstName(p.name)
@@ -341,11 +355,12 @@ export default function DashboardPage() {
       const bodyForRecipient = fillPlaceholders(bodyHtml, nombre, empresa)
 
       let res
+      const fetchOpts = { credentials: 'include', signal: AbortSignal.timeout(SEND_EMAIL_TIMEOUT_MS) }
       if (hasUserAttachments && attachmentRefs) {
         res = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+          ...fetchOpts,
           body: JSON.stringify({
             to: p.email,
             subject,
@@ -369,14 +384,14 @@ export default function DashboardPage() {
         }
         res = await fetch('/api/send-email', {
           method: 'POST',
-          credentials: 'include',
+          ...fetchOpts,
           body: form,
         })
       } else {
         res = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+          ...fetchOpts,
           body: JSON.stringify({ to: p.email, subject, bodyHtml: bodyForRecipient, cc: ccList, bcc: bccList, attachPresentation }),
         })
       }
@@ -393,7 +408,6 @@ export default function DashboardPage() {
     if (ok) {
       if (item.activityId == null) {
         setToast({ type: 'success', message: 'Correo(s) enviado(s). (No hay actividad vinculada en Pipedrive.)' })
-        setSending((s) => ({ ...s, [sendKey]: false }))
         return
       }
       const sentToEmails = selectedParticipants.map((p) => p.email)
@@ -433,7 +447,14 @@ export default function DashboardPage() {
       const detail = sendErrors.length > 0 ? sendErrors[0] : 'Revisa la consola o variables de entorno (SES).'
       setToast({ type: 'error', message: `Error al enviar algún correo. ${detail}` })
     }
-    setSending((s) => ({ ...s, [sendKey]: false }))
+    } catch (e) {
+      setToast({
+        type: 'error',
+        message: e?.message || 'Error inesperado al enviar. Revisa Blob Storage o Gmail/SES en Vercel.',
+      })
+    } finally {
+      setSending((s) => ({ ...s, [sendKey]: false }))
+    }
   }
 
   const setEditedSubject = useCallback((activityId, value) => {
