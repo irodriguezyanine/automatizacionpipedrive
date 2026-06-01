@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo } from 'react'
+import AttachmentDropzone from './AttachmentDropzone'
 
 const SentEmailsView = lazy(() => import('./SentEmailsView'))
 
@@ -148,7 +149,7 @@ export default function DashboardPage() {
     const activitiesUrl = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
 
     Promise.all([
-      fetch(activitiesUrl, { credentials: 'include', signal: controller.signal }),
+      fetch(activitiesUrl, { credentials: 'include', signal: controller.signal, cache: 'no-store' }),
       fetch('/api/templates', { credentials: 'include' }),
     ])
       .then(([activitiesRes, templatesRes]) => {
@@ -231,12 +232,19 @@ export default function DashboardPage() {
   const [refreshingActivities, setRefreshingActivities] = useState(false)
   const refreshActivities = useCallback(async () => {
     setRefreshingActivities(true)
+    setError('')
     try {
       const url = selectedOwnerId ? `/api/activities?owner_id=${selectedOwnerId}` : '/api/activities'
-      const res = await fetch(url, { credentials: 'include' })
-      const data = res.ok ? await res.json().catch(() => []) : []
-      if (Array.isArray(data)) setActivities(data)
-    } catch (_) {}
+      const res = await fetch(url, { credentials: 'include', cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Error ${res.status}`)
+      if (Array.isArray(data)) {
+        setActivities(data)
+        setToast({ type: 'success', message: 'Lista actualizada desde Pipedrive.' })
+      }
+    } catch (e) {
+      setToast({ type: 'error', message: e.message || 'No se pudo actualizar la lista' })
+    }
     setRefreshingActivities(false)
   }, [selectedOwnerId])
 
@@ -275,7 +283,8 @@ export default function DashboardPage() {
     if (dashboardView === 'sent') loadSentEmails()
   }, [dashboardView])
 
-  async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays, attachPresentation = false) {
+  async function handleSend(item, selectedParticipants, cc, bcc, followUpInDays, sendOptions = {}) {
+    const { attachPresentation = false, attachmentFiles = [] } = sendOptions
     if (selectedParticipants.length === 0) return
     let emailsForWarn = sentEmails
     if (emailsForWarn.length === 0) {
@@ -308,16 +317,37 @@ export default function DashboardPage() {
     let ok = true
     const messageIds = []
     const sendErrors = []
+    const hasUserAttachments = attachmentFiles.length > 0
     for (const p of selectedParticipants) {
       const nombre = getFirstName(p.name)
       const empresa = item.orgName || 'la empresa'
       const bodyForRecipient = fillPlaceholders(bodyHtml, nombre, empresa)
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ to: p.email, subject, bodyHtml: bodyForRecipient, cc: ccList, bcc: bccList, attachPresentation }),
-      })
+
+      let res
+      if (hasUserAttachments) {
+        const form = new FormData()
+        form.append('to', p.email)
+        form.append('subject', subject)
+        form.append('bodyHtml', bodyForRecipient)
+        form.append('cc', JSON.stringify(ccList))
+        form.append('bcc', JSON.stringify(bccList))
+        form.append('attachPresentation', attachPresentation ? 'true' : 'false')
+        for (const file of attachmentFiles) {
+          form.append('files', file, file.name)
+        }
+        res = await fetch('/api/send-email', {
+          method: 'POST',
+          credentials: 'include',
+          body: form,
+        })
+      } else {
+        res = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ to: p.email, subject, bodyHtml: bodyForRecipient, cc: ccList, bcc: bccList, attachPresentation }),
+        })
+      }
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
         if (data.messageId) messageIds.push(data.messageId)
@@ -799,7 +829,8 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
   const [selected, setSelected] = useState({})
   const [cc, setCc] = useState(DEFAULT_CC)
   const [bcc, setBcc] = useState(DEFAULT_BCC)
-  const [attachPresentation, setAttachPresentation] = useState(false)
+  const [includeDefaultPresentation, setIncludeDefaultPresentation] = useState(false)
+  const [attachmentFiles, setAttachmentFiles] = useState([])
   const [followUpInDays, setFollowUpInDays] = useState(7)
   const [viewBodyMode, setViewBodyMode] = useState('preview')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
@@ -1113,18 +1144,13 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
             <EmailTagInput value={bcc} onChange={setBcc} placeholder="Agregar correo en copia oculta…" />
             <p className="hint">Copia oculta. Mismos destinatarios en cada envío. Por defecto: jpmontero.</p>
           </div>
-          <div className="form-group checkbox-group">
-            <label htmlFor={`attach-presentation-${cardKey}`}>
-              <input
-                type="checkbox"
-                id={`attach-presentation-${cardKey}`}
-                checked={attachPresentation}
-                onChange={(e) => setAttachPresentation(e.target.checked)}
-              />
-              <span>Adjuntar presentación Vedisa Remates (PDF)</span>
-            </label>
-            <p className="hint">Incluye el archivo &quot;2603 Presentación VEDISA REMATES.pdf&quot; en el correo.</p>
-          </div>
+          <AttachmentDropzone
+            inputId={`attach-files-${cardKey}`}
+            files={attachmentFiles}
+            onChange={setAttachmentFiles}
+            includeDefaultPresentation={includeDefaultPresentation}
+            onIncludeDefaultPresentationChange={setIncludeDefaultPresentation}
+          />
           {!isStandalone && (
             <div className="form-group">
               <label htmlFor={`follow-up-${cardKey}`}>Programar siguiente seguimiento en</label>
@@ -1143,7 +1169,12 @@ const ActivityCard = memo(function ActivityCard({ item, onSend, sending, setEdit
           <button
             className="btn btn-primary"
             disabled={selectedParticipants.length === 0 || sending}
-            onClick={() => onSend(item, selectedParticipants, cc, bcc, followUpInDays, attachPresentation)}
+            onClick={() =>
+              onSend(item, selectedParticipants, cc, bcc, followUpInDays, {
+                attachPresentation: includeDefaultPresentation,
+                attachmentFiles,
+              })
+            }
           >
             {sending
               ? 'Enviando…'

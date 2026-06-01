@@ -3,10 +3,12 @@ import {
   getOrganization,
   getPerson,
   getPersonsByOrg,
+  getPersonsByOrgLimited,
   getDeal,
   getDealParticipants,
-  getPrimaryEmail,
-  getEmailFromDealParticipantRow,
+  getDealPersons,
+  getAllEmails,
+  getAllEmailsFromDealParticipantRow,
   getNameFromDealParticipantRow,
   toId,
 } from '../../../lib/pipedrive.js'
@@ -37,6 +39,17 @@ async function mapWithConcurrency(items, concurrency, worker) {
   return out
 }
 
+function pushParticipant(participants, seenEmails, { personId, name, email }) {
+  const e = email ? String(email).trim().toLowerCase() : ''
+  if (!e || seenEmails.has(e)) return
+  seenEmails.add(e)
+  participants.push({
+    personId: personId != null ? personId : null,
+    name: (name && String(name).trim()) || e,
+    email: e,
+  })
+}
+
 export async function GET(request) {
   if (!process.env.PIPEDRIVE_API_TOKEN) {
     return Response.json(
@@ -52,8 +65,8 @@ export async function GET(request) {
     const maxItems = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 300) : 50
     const configuredConcurrency = Number(process.env.PIPEDRIVE_ENRICH_CONCURRENCY || 6)
     const enrichConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0 ? Math.min(configuredConcurrency, 12) : 6
-    /** Cargar todos los contactos de la empresa por actividad es muy lento (muchas llamadas). Solo activar si lo necesitas. */
-    const includeOrgWidePersons = process.env.PIPEDRIVE_INCLUDE_ORG_PERSONS_IN_PANEL === 'true'
+    /** light = 1 página por org (rápido); full = todas las páginas (lento); off = solo deal + persona principal */
+    const orgPersonsMode = String(process.env.PIPEDRIVE_ORG_PERSONS_MODE || 'light').toLowerCase()
     const { all } = await getAllActivitiesNotDone({ maxItems, ownerId })
     const todayStr = formatLocalYmd()
     /** Todas las no completadas: atrasadas, vencen hoy y pendientes (futuro o sin fecha). */
@@ -64,6 +77,7 @@ export async function GET(request) {
     const personCache = new Map()
     const orgPersonsCache = new Map()
     const dealParticipantsCache = new Map()
+    const dealPersonsCache = new Map()
     const dealCache = new Map()
 
     async function getOrgCached(orgId) {
@@ -97,7 +111,14 @@ export async function GET(request) {
       const id = Number(orgId)
       if (orgPersonsCache.has(id)) return orgPersonsCache.get(id)
       try {
-        const list = await getPersonsByOrg(orgId)
+        let list = []
+        if (orgPersonsMode === 'off') {
+          list = []
+        } else if (orgPersonsMode === 'full') {
+          list = await getPersonsByOrg(orgId)
+        } else {
+          list = await getPersonsByOrgLimited(orgId)
+        }
         orgPersonsCache.set(id, list)
         return list
       } catch (_) {
@@ -120,6 +141,20 @@ export async function GET(request) {
       }
     }
 
+    async function getDealPersonsCached(dealId) {
+      if (dealId == null) return []
+      const id = Number(dealId)
+      if (dealPersonsCache.has(id)) return dealPersonsCache.get(id)
+      try {
+        const list = await getDealPersons(dealId)
+        dealPersonsCache.set(id, list)
+        return list
+      } catch (_) {
+        dealPersonsCache.set(id, [])
+        return []
+      }
+    }
+
     async function getDealCached(dealId) {
       if (dealId == null) return null
       const id = Number(dealId)
@@ -137,13 +172,15 @@ export async function GET(request) {
     const mapped = await mapWithConcurrency(toEnrich, enrichConcurrency, async (activity) => {
       let orgId = toId(activity.org_id) ?? toId(activity.org?.id)
       const primaryPersonId = toId(activity.person_id) ?? toId(activity.person?.id)
+      const dealId = toId(activity.deal_id)
       let orgName = null
       let primaryName = 'Estimado/a'
       const participants = []
+      const seenEmails = new Set()
 
       let deal = null
-      if (activity.deal_id) {
-        deal = await getDealCached(activity.deal_id)
+      if (dealId) {
+        deal = await getDealCached(dealId)
         if (!orgId) orgId = toId(deal?.org_id) ?? toId(deal?.org?.id)
       }
 
@@ -172,45 +209,72 @@ export async function GET(request) {
         orgName = subj ? `Sin empresa · ${subj.slice(0, 80)}${subj.length > 80 ? '…' : ''}` : `Actividad #${activity.id}`
       }
 
-      const personIds = new Set()
-
-      /** Emails/nombres que vienen en la lista de participantes del deal (a veces no repetidos en GET persons/{id}). */
-      const dealRowByPersonId = new Map()
-      if (includeOrgWidePersons && orgId) {
-        const orgPersons = await getPersonsByOrgCached(orgId)
-        for (const person of orgPersons) personIds.add(person.id)
-      }
-      if (activity.deal_id) {
-        const dealParts = await getDealParticipantsCached(activity.deal_id)
+      if (dealId) {
+        const dealParts = await getDealParticipantsCached(dealId)
         for (const p of dealParts) {
-          // person_id en Pipedrive suele ser objeto { value, name, email, ... }; p.id es el id del *participante*, no de la persona.
           const pid = toId(p.person_id) ?? toId(p.person?.id) ?? toId(p.person)
-          if (pid != null) personIds.add(pid)
-          if (pid != null) {
-            const embEmail = getEmailFromDealParticipantRow(p)
-            const embName = getNameFromDealParticipantRow(p)
-            const prev = dealRowByPersonId.get(pid)
-            dealRowByPersonId.set(pid, {
-              email: embEmail || prev?.email || null,
-              name: embName || prev?.name || null,
+          const rowName = getNameFromDealParticipantRow(p)
+          const rowEmails = getAllEmailsFromDealParticipantRow(p)
+          for (const email of rowEmails) {
+            pushParticipant(participants, seenEmails, { personId: pid, name: rowName, email })
+          }
+          if (pid != null && rowEmails.length === 0) {
+            const person = await getPersonCached(pid)
+            for (const email of getAllEmails(person)) {
+              pushParticipant(participants, seenEmails, {
+                personId: pid,
+                name: person?.name || rowName,
+                email,
+              })
+            }
+          }
+        }
+
+        const dealPersons = await getDealPersonsCached(dealId)
+        for (const person of dealPersons) {
+          for (const email of getAllEmails(person)) {
+            pushParticipant(participants, seenEmails, {
+              personId: person.id,
+              name: person.name,
+              email,
             })
           }
         }
       }
-      if (primaryPersonId != null) personIds.add(primaryPersonId)
 
-      const seen = new Set()
-      const personList = await Promise.all(Array.from(personIds).map((pid) => getPersonCached(pid)))
-      for (let i = 0; i < personList.length; i++) {
-        const pid = Array.from(personIds)[i]
-        const person = personList[i]
-        const row = dealRowByPersonId.get(pid)
-        const email = getPrimaryEmail(person) || row?.email || null
-        if (!email || seen.has(email)) continue
-        seen.add(email)
-        const name = (person?.name && String(person.name).trim()) || row?.name || email
-        if (pid === primaryPersonId) primaryName = name
-        participants.push({ personId: pid, name, email })
+      if (orgId && orgPersonsMode !== 'off') {
+        const orgPersons = await getPersonsByOrgCached(orgId)
+        for (const person of orgPersons) {
+          for (const email of getAllEmails(person)) {
+            pushParticipant(participants, seenEmails, {
+              personId: person.id,
+              name: person.name,
+              email,
+            })
+          }
+        }
+      }
+
+      if (primaryPersonId != null) {
+        const person = await getPersonCached(primaryPersonId)
+        for (const email of getAllEmails(person)) {
+          pushParticipant(participants, seenEmails, {
+            personId: primaryPersonId,
+            name: person?.name,
+            email,
+          })
+        }
+      }
+
+      if (primaryPersonId != null) {
+        const match = participants.find((p) => p.personId === primaryPersonId)
+        if (match?.name) primaryName = match.name
+        else {
+          const person = await getPersonCached(primaryPersonId)
+          if (person?.name) primaryName = String(person.name).trim()
+        }
+      } else if (participants[0]?.name) {
+        primaryName = participants[0].name
       }
 
       const dedup = participants
@@ -252,7 +316,9 @@ export async function GET(request) {
       return (Number(a.activityId) || 0) - (Number(b.activityId) || 0)
     })
 
-    return Response.json(results)
+    return Response.json(results, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    })
   } catch (err) {
     console.error(err)
     return Response.json({ error: err.message }, { status: 500 })

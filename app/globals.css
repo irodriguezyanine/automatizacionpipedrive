@@ -848,6 +848,136 @@ input, textarea, button, select {
   accent-color: var(--vedisa-azul);
 }
 
+.attachment-dropzone-group {
+  margin-bottom: 1rem;
+}
+
+.attachment-dropzone {
+  position: relative;
+  border: 2px dashed var(--neutral-300);
+  border-radius: var(--radius);
+  background: var(--neutral-50);
+  padding: 1.25rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.attachment-dropzone:hover,
+.attachment-dropzone.is-dragover {
+  border-color: var(--vedisa-azul);
+  background: #f0f7ff;
+}
+
+.attachment-dropzone-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.attachment-dropzone-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--neutral-200);
+  color: var(--vedisa-azul);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.attachment-dropzone-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--neutral-800);
+}
+
+.attachment-dropzone-sub,
+.attachment-dropzone-limits {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vedisa-gris);
+}
+
+.attachment-dropzone-limits {
+  margin-top: 0.35rem;
+}
+
+.attachment-dropzone-actions {
+  margin-top: 0.65rem;
+}
+
+.attachment-preset-btn {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.attachment-file-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.attachment-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--neutral-200);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.85rem;
+}
+
+.attachment-file-preset {
+  background: #f8fafc;
+}
+
+.attachment-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.attachment-file-meta {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--vedisa-gris);
+}
+
+.attachment-file-remove {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--neutral-500);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
+.attachment-file-remove:hover {
+  color: #dc2626;
+}
+
+.attachment-dropzone-msg {
+  color: #b45309;
+}
+
 .recipient-row {
   display: flex;
   align-items: center;
