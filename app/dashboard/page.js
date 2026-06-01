@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, memo } from 'react'
 import AttachmentDropzone from './AttachmentDropzone'
 import { shouldUseBlobUpload, uploadEmailAttachments } from './upload-email-attachments'
+import { useConfirmDialog } from './useConfirmDialog.js'
 import { SES_RAW_MESSAGE_MAX_BYTES } from '../../lib/attachment-config.js'
 
 const UPLOAD_ATTACHMENTS_TIMEOUT_MS = 120_000
@@ -36,6 +37,7 @@ export default function DashboardPage() {
   const [sentEmails, setSentEmails] = useState([])
   const [sentEmailsLoading, setSentEmailsLoading] = useState(false)
   const [templates, setTemplates] = useState([])
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const [signatureHtml, setSignatureHtml] = useState('')
   const [customTemplates, setCustomTemplates] = useState([])
   const [showNewTemplate, setShowNewTemplate] = useState(false)
@@ -320,7 +322,25 @@ export default function DashboardPage() {
       const msg = toWarn.length === 1
         ? `Ya se le envió un correo a esta persona (${names}). ¿Desea volver a enviárselo?`
         : `Ya se les envió correo a: ${names}. ¿Desea volver a enviar?`
-      if (!window.confirm(msg)) return
+      const resendOk = await confirm({
+        title: 'Correo ya enviado',
+        message: msg,
+        confirmText: 'Enviar de nuevo',
+        cancelText: 'Cancelar',
+      })
+      if (!resendOk) return
+    }
+    const hasUserAttachments = attachmentFiles.length > 0
+    const attachmentBytes = attachmentFiles.reduce((s, f) => s + (f.size || 0), 0)
+    if (hasUserAttachments && attachmentBytes > SES_RAW_MESSAGE_MAX_BYTES * 0.92) {
+      const proceed = await confirm({
+        title: 'Adjunto grande',
+        message:
+          'El adjunto pesa más de ~10 MB. Con AWS SES el envío puede fallar; para PDFs grandes configura Gmail (GMAIL_USER y GMAIL_APP_PASSWORD) en Vercel. ¿Deseas intentar enviar igual?',
+        confirmText: 'Enviar igual',
+        cancelText: 'Cancelar',
+      })
+      if (!proceed) return
     }
     const sendKey = item.activityId != null ? item.activityId : `standalone-${item.orgId ?? 'x'}`
     setSending((s) => ({ ...s, [sendKey]: true }))
@@ -332,14 +352,6 @@ export default function DashboardPage() {
     let ok = true
     const messageIds = []
     const sendErrors = []
-    const hasUserAttachments = attachmentFiles.length > 0
-    const attachmentBytes = attachmentFiles.reduce((s, f) => s + (f.size || 0), 0)
-    if (hasUserAttachments && attachmentBytes > SES_RAW_MESSAGE_MAX_BYTES * 0.92) {
-      const proceed = window.confirm(
-        'El adjunto pesa más de ~10 MB. Con AWS SES el envío puede fallar; para PDFs grandes configura Gmail (GMAIL_USER y GMAIL_APP_PASSWORD) en Vercel. ¿Deseas intentar enviar igual?'
-      )
-      if (!proceed) return
-    }
     let attachmentRefs = null
     let attachmentsSkippedAny = false
     if (hasUserAttachments && shouldUseBlobUpload(attachmentFiles)) {
@@ -531,6 +543,7 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-wrap">
+      {confirmDialog}
       {toast && (
         <div className={`toast toast-${toast.type}`} role="status">
           {toast.message}
